@@ -1,0 +1,44 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Build and upload DMG
+        run: npm run publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version and SHA256
+        id: meta
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          SHA256=$(shasum -a 256 dist/PinScribe-${VERSION}-arm64.dmg | awk '{print $1}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Update homebrew tap
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.TAP_TOKEN }}
+          repository: trmp10/homebrew-tap
+          event-type: new-release
+          client-payload: |
+            {
+              "cask": "pinscribe",
+              "version": "${{ steps.meta.outputs.version }}",
+              "sha256": "${{ steps.meta.outputs.sha256 }}"
+            }

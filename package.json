@@ -1,0 +1,38 @@
+{
+  "name": "pinscribe",
+  "version": "1.0.0",
+  "description": "macOS annotation tool for design feedback",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac dmg",
+    "publish": "electron-builder --mac dmg --publish always"
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.finity.pinscribe",
+    "productName": "PinScribe",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "resources/**"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.graphics-design",
+      "identity": null
+    },
+    "dmg": {
+      "title": "PinScribe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "trmp10",
+      "repo": "pinscribe"
+    }
+  }
+}

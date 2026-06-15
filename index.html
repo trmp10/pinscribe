@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PinScribe</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #1a1a1a;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      color: #fff;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #titlebar {
+      height: 44px;
+      flex-shrink: 0;
+      border-bottom: 1px solid #2a2a2a;
+      position: relative;
+      -webkit-app-region: drag;
+    }
+
+    #toolbar {
+      position: absolute;
+      top: 0; bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      -webkit-app-region: no-drag;
+    }
+
+    .tool-btn {
+      background: transparent;
+      color: #777;
+      border: none;
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: background 0.1s, color 0.1s;
+    }
+    .tool-btn:hover { background: rgba(255,255,255,0.08); color: #bbb; }
+    .tool-btn.active { background: #3a3a3a; color: #fff; }
+
+    .toolbar-divider { width: 1px; height: 16px; background: #333; margin: 0 2px; }
+
+    #color-btn {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      padding: 0;
+      transition: border-color 0.1s;
+    }
+    #color-btn.open { border-color: #fff; }
+
+    #color-picker {
+      position: absolute;
+      top: 34px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 10px;
+      padding: 10px;
+      display: none;
+      gap: 8px;
+      z-index: 100;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    #color-picker.open { display: flex; }
+
+    .color-swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 0;
+      transition: border-color 0.1s;
+    }
+    .color-swatch.selected { border-color: #fff; }
+
+    #main { flex: 1; display: flex; overflow: hidden; }
+
+    #notes-panel {
+      width: 260px;
+      flex-shrink: 0;
+      border-right: 1px solid #2a2a2a;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 16px;
+      gap: 4px;
+      overflow-y: auto;
+    }
+
+    #notes-title { font-weight: 700; font-size: 15px; margin-bottom: 12px; }
+
+    .note-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 6px 0;
+      cursor: pointer;
+    }
+
+    .note-pin {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+    }
+
+    .note-text { font-size: 13px; padding-top: 4px; line-height: 1.4; }
+    .note-text.empty { color: #555; }
+    .note-text.filled { color: #ddd; }
+
+    #canvas-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: auto;
+    }
+    #canvas-area.drop-highlight { outline: 2px solid #e8334a; outline-offset: -2px; }
+
+    #canvas-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    #canvas-empty-icon { font-size: 36px; opacity: 0.3; }
+    #canvas-empty-label { color: #555; font-size: 14px; transition: color 0.15s; }
+    #canvas-empty-label.highlight { color: #e8334a; }
+
+    #canvas-empty-btns { display: flex; gap: 8px; }
+
+    .empty-btn {
+      background: #2a2a2a;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 20px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .empty-btn.primary { background: #e8334a; }
+
+    #canvas { display: none; cursor: crosshair; }
+    #canvas.visible { display: block; }
+
+    #bottom-bar {
+      height: 56px;
+      flex-shrink: 0;
+      background: #111;
+      border-top: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+
+    #zoom-controls { display: flex; align-items: center; gap: 8px; visibility: hidden; }
+    #zoom-controls.visible { visibility: visible; }
+
+    .zoom-btn {
+      background: #2a2a2a;
+      color: #aaa;
+      border: none;
+      border-radius: 5px;
+      width: 28px;
+      height: 28px;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: inherit;
+    }
+    #zoom-fit { width: auto; padding: 4px 8px; font-size: 11px; margin-left: 4px; }
+    #zoom-label { color: #666; font-size: 12px; min-width: 40px; text-align: center; }
+
+    #action-buttons { display: flex; gap: 10px; }
+
+    .action-btn {
+      background: #2a2a2a;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 7px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      font-family: inherit;
+    }
+    .action-btn.primary { background: #e8334a; }
+
+    .kbd { background: rgba(255,255,255,0.08); border-radius: 3px; padding: 1px 5px; font-size: 11px; margin-left: 4px; }
+    .kbd.primary { background: rgba(255,255,255,0.15); }
+
+    #comment-popup {
+      position: fixed;
+      width: 300px;
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 1000;
+      padding: 14px;
+      display: none;
+    }
+    #comment-popup.open { display: block; }
+
+    #comment-label { color: #aaa; font-size: 12px; margin-bottom: 8px; }
+
+    #comment-textarea {
+      width: 100%;
+      height: 72px;
+      background: #111;
+      border: 1.5px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      padding: 8px;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+    }
+    #comment-textarea:focus { border-color: #888; }
+
+    #comment-actions { display: flex; justify-content: space-between; margin-top: 10px; }
+
+    #comment-delete {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-family: inherit;
+    }
+    #comment-delete:hover { color: #e8334a; }
+
+    #comment-right { display: flex; gap: 8px; }
+
+    #comment-cancel {
+      background: #333;
+      border: none;
+      color: #ccc;
+      font-size: 13px;
+      border-radius: 6px;
+      padding: 5px 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    #comment-save {
+      background: #e8334a;
+      border: none;
+      color: #fff;
+      font-size: 13px;
+      border-radius: 6px;
+      padding: 5px 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="titlebar">
+    <div id="toolbar">
+      <button id="btn-box" class="tool-btn active" title="Annotation box">
+        <svg width="20" height="20" viewBox="0 0 20 20">
+          <circle cx="10" cy="10" r="9" fill="currentColor"/>
+          <text x="10" y="10" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a" font-size="10" font-weight="bold" font-family="-apple-system,sans-serif">1</text>
+        </svg>
+      </button>
+      <button id="btn-arrow" class="tool-btn" title="Arrow">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M3 13L13 3M13 3H8M13 3V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="toolbar-divider"></div>
+      <div style="position:relative">
+        <button id="color-btn" title="Annotation colour"></button>
+        <div id="color-picker"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="notes-panel">
+      <div id="notes-title">Notes</div>
+      <div id="notes-list"></div>
+    </div>
+    <div id="canvas-area">
+      <div id="canvas-empty">
+        <div id="canvas-empty-icon">📎</div>
+        <div id="canvas-empty-label">Drop an image or use the buttons below</div>
+        <div id="canvas-empty-btns">
+          <button class="empty-btn primary" id="btn-open">Open image</button>
+          <button class="empty-btn" id="btn-paste">Paste image</button>
+        </div>
+      </div>
+      <canvas id="canvas"></canvas>
+    </div>
+  </div>
+
+  <div id="bottom-bar">
+    <div id="zoom-controls">
+      <button class="zoom-btn" id="zoom-out">−</button>
+      <span id="zoom-label">100%</span>
+      <button class="zoom-btn" id="zoom-in">+</button>
+      <button class="zoom-btn" id="zoom-fit">Fit</button>
+    </div>
+    <div id="action-buttons">
+      <button class="action-btn" id="btn-cancel">Cancel <span class="kbd">⌘W</span></button>
+      <button class="action-btn primary" id="btn-copy">Copy & Close <span class="kbd primary">⌘↩</span></button>
+    </div>
+  </div>
+
+  <div id="comment-popup">
+    <div id="comment-label">Note</div>
+    <textarea id="comment-textarea" placeholder="Add a comment..."></textarea>
+    <div id="comment-actions">
+      <button id="comment-delete">Delete</button>
+      <div id="comment-right">
+        <button id="comment-cancel">Cancel</button>
+        <button id="comment-save">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="file-input" accept="image/*" style="display:none">
+
+  <script>
+    // ─── Constants ────────────────────────────────────────────────────────────
+    const PANEL_W = 260
+    const PIN_R = 14
+    const DRAG_THRESHOLD = 8
+    const COLORS = [
+      { label: 'Red',    value: '#e8334a' },
+      { label: 'Blue',   value: '#3b82f6' },
+      { label: 'Green',  value: '#22c55e' },
+      { label: 'Amber',  value: '#f59e0b' },
+      { label: 'Purple', value: '#a855f7' },
+    ]
+
+    // ─── State ────────────────────────────────────────────────────────────────
+    let img = null
+    let imgSize = { w: 0, h: 0 }
+    let scale = 1
+    let zoom = 1
+    let tool = 'box'
+    let color = COLORS[0].value
+    let annotations = []
+    let arrows = []
+    let draft = null
+    let popup = null
+    let isDown = false
+    let seq = 1
+
+    const es = () => scale * zoom
+
+    // ─── DOM refs ─────────────────────────────────────────────────────────────
+    const canvas        = document.getElementById('canvas')
+    const ctx           = canvas.getContext('2d')
+    const canvasArea    = document.getElementById('canvas-area')
+    const canvasEmpty   = document.getElementById('canvas-empty')
+    const emptyLabel    = document.getElementById('canvas-empty-label')
+    const notesList     = document.getElementById('notes-list')
+    const zoomControls  = document.getElementById('zoom-controls')
+    const zoomLabel     = document.getElementById('zoom-label')
+    const btnBox        = document.getElementById('btn-box')
+    const btnArrow      = document.getElementById('btn-arrow')
+    const colorBtn      = document.getElementById('color-btn')
+    const colorPicker   = document.getElementById('color-picker')
+    const fileInput     = document.getElementById('file-input')
+    const commentPopup  = document.getElementById('comment-popup')
+    const commentTA     = document.getElementById('comment-textarea')
+
+    // ─── Color picker setup ───────────────────────────────────────────────────
+    colorBtn.style.background = color
+    COLORS.forEach(c => {
+      const btn = document.createElement('button')
+      btn.className = 'color-swatch' + (c.value === color ? ' selected' : '')
+      btn.style.background = c.value
+      btn.dataset.color = c.value
+      btn.title = c.label
+      btn.addEventListener('click', () => {
+        color = c.value
+        colorBtn.style.background = color
+        colorPicker.querySelectorAll('.color-swatch').forEach(s =>
+          s.classList.toggle('selected', s.dataset.color === color)
+        )
+        closeColorPicker()
+      })
+      colorPicker.appendChild(btn)
+    })
+
+    // ─── Image loading ────────────────────────────────────────────────────────
+    function loadImage(dataUrl) {
+      const el = new Image()
+      el.onload = () => {
+        const maxW = window.innerWidth - PANEL_W
+        const maxH = window.innerHeight - 44 - 56
+        scale = Math.min(maxW / el.width, maxH / el.height, 1)
+        zoom = 1
+        seq = 1
+        annotations = []
+        arrows = []
+        img = el
+        imgSize = { w: el.width, h: el.height }
+        canvas.classList.add('visible')
+        canvasEmpty.style.display = 'none'
+        zoomControls.classList.add('visible')
+        draw()
+        renderNotes()
+        renderZoom()
+      }
+      el.src = dataUrl
+    }
+
+    function readFile(file) {
+      const reader = new FileReader()
+      reader.onload = () => loadImage(reader.result)
+      reader.readAsDataURL(file)
+    }
+
+    // ─── Canvas drawing ───────────────────────────────────────────────────────
+    function draw() {
+      if (!img) return
+      const s = es()
+      canvas.width  = imgSize.w * s
+      canvas.height = imgSize.h * s
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+      arrows.forEach(a => {
+        ctx.strokeStyle = a.color
+        ctx.lineWidth = 2
+        drawArrowShape(a.x1 * s, a.y1 * s, a.x2 * s, a.y2 * s)
+      })
+
+      annotations.forEach(a => {
+        ctx.strokeStyle = a.color
+        ctx.lineWidth = 2
+        if (a.box) ctx.strokeRect(a.box.x * s, a.box.y * s, a.box.w * s, a.box.h * s)
+        const px = a.box ? a.box.x * s : a.point.x * s
+        const py = a.box ? a.box.y * s : a.point.y * s
+        drawPin(px, py, a.num, a.color)
+      })
+
+      if (draft) {
+        ctx.strokeStyle = color
+        ctx.lineWidth = 2
+        if (tool === 'box') {
+          ctx.setLineDash([6, 3])
+          ctx.strokeRect(draft.x1 * s, draft.y1 * s, (draft.x2 - draft.x1) * s, (draft.y2 - draft.y1) * s)
+          ctx.setLineDash([])
+        } else {
+          drawArrowShape(draft.x1 * s, draft.y1 * s, draft.x2 * s, draft.y2 * s)
+        }
+      }
+    }
+
+    function drawPin(x, y, num, c) {
+      ctx.beginPath()
+      ctx.arc(x, y, PIN_R, 0, Math.PI * 2)
+      ctx.fillStyle = c
+      ctx.fill()
+      ctx.fillStyle = '#fff'
+      ctx.font = 'bold 13px -apple-system, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(String(num), x, y + 1)
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
+    }
+
+    function drawArrowShape(x1, y1, x2, y2) {
+      const headLen = 14
+      const angle = Math.atan2(y2 - y1, x2 - x1)
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x2, y2)
+      ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6))
+      ctx.moveTo(x2, y2)
+      ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6))
+      ctx.stroke()
+    }
+
+    // ─── Notes panel ──────────────────────────────────────────────────────────
+    function renderNotes() {
+      notesList.innerHTML = ''
+      if (annotations.length === 0) {
+        notesList.innerHTML = '<div style="color:#444;font-size:13px">Annotations will appear here</div>'
+        return
+      }
+      annotations.forEach(a => {
+        const item = document.createElement('div')
+        item.className = 'note-item'
+        item.addEventListener('click', () => openPopup(a.id, PANEL_W + 20, 120))
+
+        const pin = document.createElement('div')
+        pin.className = 'note-pin'
+        pin.style.background = a.color
+        pin.textContent = a.num
+
+        const text = document.createElement('div')
+        text.className = 'note-text ' + (a.comment ? 'filled' : 'empty')
+        text.textContent = a.comment || 'Add note...'
+
+        item.appendChild(pin)
+        item.appendChild(text)
+        notesList.appendChild(item)
+      })
+    }
+
+    function renderZoom() {
+      zoomLabel.textContent = Math.round(es() * 100) + '%'
+    }
+
+    // ─── Mouse interaction ────────────────────────────────────────────────────
+    function canvasPos(e) {
+      const r = canvas.getBoundingClientRect()
+      return { x: (e.clientX - r.left) / es(), y: (e.clientY - r.top) / es() }
+    }
+
+    function annotationAt(x, y) {
+      return annotations.find(a => {
+        const px = a.box ? a.box.x : a.point.x
+        const py = a.box ? a.box.y : a.point.y
+        return Math.hypot(px - x, py - y) <= PIN_R / es()
+      })
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      if (popup) return
+      closeColorPicker()
+      const pos = canvasPos(e)
+      const hit = annotationAt(pos.x, pos.y)
+      if (hit) { openPopup(hit.id, e.clientX, e.clientY); return }
+      isDown = true
+      draft = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y }
+    })
+
+    canvas.addEventListener('mousemove', e => {
+      if (!isDown) return
+      const pos = canvasPos(e)
+      draft = { ...draft, x2: pos.x, y2: pos.y }
+      draw()
+    })
+
+    canvas.addEventListener('mouseup', e => {
+      if (!isDown) return
+      isDown = false
+      if (!draft) return
+      const dx = Math.abs(draft.x2 - draft.x1)
+      const dy = Math.abs(draft.y2 - draft.y1)
+      if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) { draft = null; draw(); return }
+
+      const id = 'shape-' + Date.now()
+      if (tool === 'arrow') {
+        arrows = [...arrows, { id, x1: draft.x1, y1: draft.y1, x2: draft.x2, y2: draft.y2, color }]
+      } else {
+        const num = seq++
+        const box = {
+          x: Math.min(draft.x1, draft.x2), y: Math.min(draft.y1, draft.y2),
+          w: Math.abs(draft.x2 - draft.x1),  h: Math.abs(draft.y2 - draft.y1)
+        }
+        annotations = [...annotations, { id, num, comment: '', color, box }]
+        openPopup(id, e.clientX, e.clientY)
+      }
+      draft = null
+      draw()
+      renderNotes()
+    })
+
+    // ─── Comment popup ────────────────────────────────────────────────────────
+    let currentPopupId = null
+
+    function openPopup(id, x, y) {
+      const ann = annotations.find(a => a.id === id)
+      if (!ann) return
+      currentPopupId = id
+      const popupW = 300, popupH = 170
+      commentPopup.style.left = Math.min(x, window.innerWidth - popupW - 10) + 'px'
+      commentPopup.style.top  = Math.min(y, window.innerHeight - popupH - 10) + 'px'
+      commentTA.value = ann.comment || ''
+      commentPopup.classList.add('open')
+      popup = { id, x, y }
+      setTimeout(() => commentTA.focus(), 0)
+    }
+
+    function closePopup() {
+      commentPopup.classList.remove('open')
+      popup = null
+      currentPopupId = null
+    }
+
+    function savePopup() {
+      if (!currentPopupId) return
+      const id = currentPopupId
+      annotations = annotations.map(a => a.id === id ? { ...a, comment: commentTA.value } : a)
+      closePopup()
+      renderNotes()
+    }
+
+    function deletePopup() {
+      if (!currentPopupId) return
+      const id = currentPopupId
+      annotations = annotations.filter(a => a.id !== id).map((a, i) => ({ ...a, num: i + 1 }))
+      seq = annotations.length + 1
+      closePopup()
+      draw()
+      renderNotes()
+    }
+
+    commentPopup.addEventListener('mousedown', e => e.stopPropagation())
+    document.getElementById('comment-save').addEventListener('click', savePopup)
+    document.getElementById('comment-cancel').addEventListener('click', closePopup)
+    document.getElementById('comment-delete').addEventListener('click', deletePopup)
+
+    // ─── Toolbar ──────────────────────────────────────────────────────────────
+    btnBox.addEventListener('click', () => {
+      tool = 'box'
+      btnBox.classList.add('active')
+      btnArrow.classList.remove('active')
+    })
+    btnArrow.addEventListener('click', () => {
+      tool = 'arrow'
+      btnArrow.classList.add('active')
+      btnBox.classList.remove('active')
+    })
+
+    function closeColorPicker() {
+      colorBtn.classList.remove('open')
+      colorPicker.classList.remove('open')
+    }
+
+    colorBtn.addEventListener('click', e => {
+      e.stopPropagation()
+      const open = colorPicker.classList.toggle('open')
+      colorBtn.classList.toggle('open', open)
+    })
+
+    document.addEventListener('click', closeColorPicker)
+
+    // ─── Drag & drop ──────────────────────────────────────────────────────────
+    canvasArea.addEventListener('dragover', e => {
+      e.preventDefault()
+      canvasArea.classList.add('drop-highlight')
+      emptyLabel.classList.add('highlight')
+      emptyLabel.textContent = 'Drop to open'
+    })
+
+    canvasArea.addEventListener('dragleave', () => {
+      canvasArea.classList.remove('drop-highlight')
+      emptyLabel.classList.remove('highlight')
+      emptyLabel.textContent = 'Drop an image or use the buttons below'
+    })
+
+    canvasArea.addEventListener('drop', e => {
+      e.preventDefault()
+      canvasArea.classList.remove('drop-highlight')
+      emptyLabel.classList.remove('highlight')
+      emptyLabel.textContent = 'Drop an image or use the buttons below'
+      const file = e.dataTransfer.files[0]
+      if (file && file.type.startsWith('image/')) readFile(file)
+    })
+
+    // ─── Open & paste ──────────────────────────────────────────────────────────
+    document.getElementById('btn-open').addEventListener('click', () => fileInput.click())
+    fileInput.addEventListener('change', e => {
+      const f = e.target.files[0]
+      if (f) readFile(f)
+      e.target.value = ''
+    })
+
+    document.getElementById('btn-paste').addEventListener('click', async () => {
+      const dataUrl = await window.api.pasteImage()
+      if (dataUrl) loadImage(dataUrl)
+    })
+
+    // ─── Zoom ─────────────────────────────────────────────────────────────────
+    document.getElementById('zoom-in').addEventListener('click', () => {
+      if (!img) return
+      zoom = Math.min(zoom * 1.1, 5)
+      draw(); renderZoom()
+    })
+    document.getElementById('zoom-out').addEventListener('click', () => {
+      if (!img) return
+      zoom = Math.max(zoom * 0.9, 0.1)
+      draw(); renderZoom()
+    })
+    document.getElementById('zoom-fit').addEventListener('click', () => {
+      if (!img) return
+      zoom = 1
+      draw(); renderZoom()
+    })
+
+    canvasArea.addEventListener('wheel', e => {
+      if (!img) return
+      e.preventDefault()
+      zoom = Math.min(Math.max(zoom * (e.deltaY < 0 ? 1.1 : 0.9), 0.1), 5)
+      draw(); renderZoom()
+    }, { passive: false })
+
+    // ─── Bottom bar ───────────────────────────────────────────────────────────
+    document.getElementById('btn-cancel').addEventListener('click', () => window.close())
+    document.getElementById('btn-copy').addEventListener('click', copyClose)
+
+    async function copyClose() {
+      if (!img) return
+      const dataUrl = await renderComposite()
+      window.api.copyToClipboard(dataUrl)
+      window.close()
+    }
+
+    // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+    document.addEventListener('keydown', async e => {
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key === 'w') { e.preventDefault(); window.close() }
+      if (mod && e.key === 'Enter') { e.preventDefault(); copyClose() }
+      if (mod && e.key === 'o') { e.preventDefault(); fileInput.click() }
+      if (mod && e.key === 'v' && !popup) {
+        e.preventDefault()
+        const dataUrl = await window.api.pasteImage()
+        if (dataUrl) loadImage(dataUrl)
+      }
+      if (e.key === 'Escape') { closeColorPicker(); if (popup) closePopup() }
+      if (popup && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePopup() }
+    })
+
+    // ─── Composite render (output image) ─────────────────────────────────────
+    async function renderComposite() {
+      const COMP_PANEL = 300
+      const PAD = 24
+      const imgW = imgSize.w
+      const imgH = imgSize.h
+      const pinR = 14
+      const strokeW = Math.max(2, Math.round(imgW * 0.002))
+      const pinFont = 12
+
+      const noted = annotations.filter(a => a.comment.trim())
+      const titleH = 44
+      const itemH = Math.max(36, pinR * 2 + 12)
+      const legendH = noted.length > 0 ? 56 : 0
+      const notesH = titleH + noted.length * itemH + legendH + PAD * 2
+      const totalH = Math.max(imgH, notesH)
+      const totalW = COMP_PANEL + imgW
+
+      const c = document.createElement('canvas')
+      c.width  = totalW
+      c.height = totalH
+      const cx = c.getContext('2d')
+
+      cx.fillStyle = '#fff'
+      cx.fillRect(0, 0, totalW, totalH)
+
+      cx.fillStyle = '#111'
+      cx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif'
+      cx.fillText('Notes', PAD, PAD + 18)
+
+      noted.forEach((a, i) => {
+        const iy = PAD + titleH + i * itemH
+        const pinX = PAD + pinR
+        const pinY = iy + pinR
+
+        cx.beginPath()
+        cx.arc(pinX, pinY, pinR, 0, Math.PI * 2)
+        cx.fillStyle = a.color
+        cx.fill()
+
+        cx.fillStyle = '#fff'
+        cx.font = `bold ${pinFont}px -apple-system, BlinkMacSystemFont, sans-serif`
+        cx.textAlign = 'center'
+        cx.textBaseline = 'middle'
+        cx.fillText(String(a.num), pinX, pinY + 1)
+        cx.textAlign = 'left'
+        cx.textBaseline = 'alphabetic'
+
+        cx.fillStyle = '#222'
+        cx.font = '17px -apple-system, BlinkMacSystemFont, sans-serif'
+        cx.fillText(a.comment, PAD + pinR * 2 + 8, pinY + 5, COMP_PANEL - PAD - pinR * 2 - 16)
+      })
+
+      if (noted.length > 0) {
+        const legY = PAD + titleH + noted.length * itemH + 10
+        cx.fillStyle = '#aaa'
+        cx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif'
+        cx.fillText('Numbers map to the notes above.', PAD, legY)
+        cx.fillText('Outlined shapes are user-added annotations.', PAD, legY + 18)
+      }
+
+      cx.strokeStyle = '#e5e5e5'
+      cx.lineWidth = 1
+      cx.beginPath()
+      cx.moveTo(COMP_PANEL, 0)
+      cx.lineTo(COMP_PANEL, totalH)
+      cx.stroke()
+
+      const imgOffY = (totalH - imgH) / 2
+      cx.drawImage(img, COMP_PANEL, imgOffY, imgW, imgH)
+
+      arrows.forEach(a => {
+        cx.strokeStyle = a.color
+        cx.lineWidth = strokeW
+        compArrow(cx, COMP_PANEL + a.x1, imgOffY + a.y1, COMP_PANEL + a.x2, imgOffY + a.y2, strokeW)
+      })
+
+      annotations.forEach(a => {
+        cx.strokeStyle = a.color
+        cx.lineWidth = strokeW
+        if (a.box) cx.strokeRect(COMP_PANEL + a.box.x, imgOffY + a.box.y, a.box.w, a.box.h)
+
+        const px = a.box ? COMP_PANEL + a.box.x : COMP_PANEL + a.point.x
+        const py = a.box ? imgOffY + a.box.y : imgOffY + a.point.y
+
+        cx.beginPath()
+        cx.arc(px, py, pinR, 0, Math.PI * 2)
+        cx.fillStyle = a.color
+        cx.fill()
+
+        cx.fillStyle = '#fff'
+        cx.font = `bold ${pinFont}px -apple-system, BlinkMacSystemFont, sans-serif`
+        cx.textAlign = 'center'
+        cx.textBaseline = 'middle'
+        cx.fillText(String(a.num), px, py + 1)
+        cx.textAlign = 'left'
+        cx.textBaseline = 'alphabetic'
+      })
+
+      return c.toDataURL('image/png')
+    }
+
+    function compArrow(cx, x1, y1, x2, y2, lw) {
+      const headLen = Math.max(16, lw * 5)
+      const angle = Math.atan2(y2 - y1, x2 - x1)
+      cx.beginPath()
+      cx.moveTo(x1, y1)
+      cx.lineTo(x2, y2)
+      cx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6))
+      cx.moveTo(x2, y2)
+      cx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6))
+      cx.stroke()
+    }
+  </script>
+</body>
+</html>
