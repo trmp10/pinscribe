@@ -68,18 +68,16 @@
     #color-btn.open { border-color: #fff; }
 
     #color-picker {
-      position: absolute;
-      top: 34px;
-      left: 50%;
-      transform: translateX(-50%);
+      position: fixed;
       background: #222;
       border: 1px solid #444;
       border-radius: 10px;
       padding: 10px;
       display: none;
       gap: 8px;
-      z-index: 100;
+      z-index: 1000;
       box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      -webkit-app-region: no-drag;
     }
     #color-picker.open { display: flex; }
 
@@ -252,6 +250,13 @@
     }
     #comment-textarea:focus { border-color: #888; }
 
+    #popup-colors { display: flex; gap: 8px; margin-top: 10px; }
+    .popup-swatch {
+      width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
+      cursor: pointer; padding: 0; transition: border-color 0.1s;
+    }
+    .popup-swatch.selected { border-color: #fff; }
+
     #comment-actions { display: flex; justify-content: space-between; margin-top: 10px; }
 
     #comment-delete {
@@ -339,14 +344,15 @@
       <button class="zoom-btn" id="zoom-fit">Fit</button>
     </div>
     <div id="action-buttons">
-      <button class="action-btn" id="btn-cancel">Cancel <span class="kbd">⌘W</span></button>
-      <button class="action-btn primary" id="btn-copy">Copy & Close <span class="kbd primary">⌘↩</span></button>
+      <button class="action-btn" id="btn-cancel">New <span class="kbd">⌘W</span></button>
+      <button class="action-btn primary" id="btn-copy">Copy <span class="kbd primary">⌘↩</span></button>
     </div>
   </div>
 
   <div id="comment-popup">
     <div id="comment-label">Note</div>
     <textarea id="comment-textarea" placeholder="Add a comment..."></textarea>
+    <div id="popup-colors"></div>
     <div id="comment-actions">
       <button id="comment-delete">Delete</button>
       <div id="comment-right">
@@ -384,6 +390,43 @@
     let popup = null
     let isDown = false
     let seq = 1
+    let spaceHeld = false
+    let isPanning = false
+    let panStart = { mouseX: 0, mouseY: 0, scrollLeft: 0, scrollTop: 0 }
+    let selectedId = null
+    let resizing = null
+
+    const HANDLE_CURSORS = {
+      nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize',
+      w: 'w-resize',                  e: 'e-resize',
+      sw: 'sw-resize', s: 's-resize', se: 'se-resize'
+    }
+
+    function updateCursor() {
+      canvas.style.cursor = spaceHeld ? (isPanning ? 'grabbing' : 'grab') : 'crosshair'
+    }
+
+    function getHandles(box) {
+      return {
+        nw: { x: box.x,             y: box.y           },
+        n:  { x: box.x + box.w / 2, y: box.y           },
+        ne: { x: box.x + box.w,     y: box.y           },
+        w:  { x: box.x,             y: box.y + box.h/2 },
+        e:  { x: box.x + box.w,     y: box.y + box.h/2 },
+        sw: { x: box.x,             y: box.y + box.h   },
+        s:  { x: box.x + box.w / 2, y: box.y + box.h   },
+        se: { x: box.x + box.w,     y: box.y + box.h   }
+      }
+    }
+
+    function handleAt(x, y) {
+      if (!selectedId) return null
+      const ann = annotations.find(a => a.id === selectedId)
+      if (!ann || !ann.box) return null
+      const r = 12 / es()
+      const se = getHandles(ann.box).se
+      return (Math.abs(se.x - x) <= r && Math.abs(se.y - y) <= r) ? 'se' : null
+    }
 
     const es = () => scale * zoom
 
@@ -405,6 +448,7 @@
     const commentTA     = document.getElementById('comment-textarea')
 
     // ─── Color picker setup ───────────────────────────────────────────────────
+    document.body.appendChild(colorPicker) // move out of toolbar so position:fixed works correctly
     colorBtn.style.background = color
     COLORS.forEach(c => {
       const btn = document.createElement('button')
@@ -434,6 +478,7 @@
         seq = 1
         annotations = []
         arrows = []
+        selectedId = null
         img = el
         imgSize = { w: el.width, h: el.height }
         canvas.classList.add('visible')
@@ -442,6 +487,7 @@
         draw()
         renderNotes()
         renderZoom()
+        saveSession()
       }
       el.src = dataUrl
     }
@@ -486,6 +532,19 @@
           drawArrowShape(draft.x1 * s, draft.y1 * s, draft.x2 * s, draft.y2 * s)
         }
       }
+
+      if (selectedId) {
+        const sel = annotations.find(a => a.id === selectedId)
+        if (sel && sel.box) {
+          const hs = 5
+          const se = getHandles(sel.box).se
+          ctx.fillStyle = '#fff'
+          ctx.strokeStyle = sel.color
+          ctx.lineWidth = 1.5
+          ctx.fillRect(se.x * s - hs, se.y * s - hs, hs * 2, hs * 2)
+          ctx.strokeRect(se.x * s - hs, se.y * s - hs, hs * 2, hs * 2)
+        }
+      }
     }
 
     function drawPin(x, y, num, c) {
@@ -524,7 +583,7 @@
       annotations.forEach(a => {
         const item = document.createElement('div')
         item.className = 'note-item'
-        item.addEventListener('click', () => openPopup(a.id, PANEL_W + 20, 120))
+        item.addEventListener('click', () => { selectedId = a.id; openPopup(a.id) })
 
         const pin = document.createElement('div')
         pin.className = 'note-pin'
@@ -560,23 +619,88 @@
     }
 
     canvas.addEventListener('mousedown', e => {
+      if (spaceHeld) {
+        isPanning = true
+        panStart = { mouseX: e.clientX, mouseY: e.clientY, scrollLeft: canvasArea.scrollLeft, scrollTop: canvasArea.scrollTop }
+        updateCursor()
+        return
+      }
       if (popup) return
       closeColorPicker()
       const pos = canvasPos(e)
+
       const hit = annotationAt(pos.x, pos.y)
-      if (hit) { openPopup(hit.id, e.clientX, e.clientY); return }
+      if (hit) {
+        selectedId = hit.id
+        draw()
+        openPopup(hit.id)
+        return
+      }
+
+      const handle = handleAt(pos.x, pos.y)
+      if (handle) {
+        const ann = annotations.find(a => a.id === selectedId)
+        resizing = { annotationId: selectedId, handle, startMouse: pos, startBox: { ...ann.box } }
+        return
+      }
+
+      selectedId = null
       isDown = true
       draft = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y }
-    })
-
-    canvas.addEventListener('mousemove', e => {
-      if (!isDown) return
-      const pos = canvasPos(e)
-      draft = { ...draft, x2: pos.x, y2: pos.y }
       draw()
     })
 
+    canvas.addEventListener('mousemove', e => {
+      if (isPanning) {
+        canvasArea.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.mouseX)
+        canvasArea.scrollTop  = panStart.scrollTop  - (e.clientY - panStart.mouseY)
+        return
+      }
+      if (resizing) {
+        const pos = canvasPos(e)
+        const { annotationId, handle, startMouse, startBox } = resizing
+        const dx = pos.x - startMouse.x
+        const dy = pos.y - startMouse.y
+        const MIN = 20 / es()
+        let { x, y, w, h } = startBox
+        if (handle.includes('e')) w = Math.max(MIN, startBox.w + dx)
+        if (handle.includes('s')) h = Math.max(MIN, startBox.h + dy)
+        if (handle.includes('w')) { x = startBox.x + dx; w = Math.max(MIN, startBox.w - dx) }
+        if (handle.includes('n')) { y = startBox.y + dy; h = Math.max(MIN, startBox.h - dy) }
+        annotations = annotations.map(a => a.id === annotationId ? { ...a, box: { x, y, w, h } } : a)
+        draw()
+        return
+      }
+      if (isDown) {
+        const pos = canvasPos(e)
+        draft = { ...draft, x2: pos.x, y2: pos.y }
+        draw()
+        return
+      }
+      if (!spaceHeld) {
+        const pos = canvasPos(e)
+        const handle = handleAt(pos.x, pos.y)
+        if (handle) {
+          canvas.style.cursor = HANDLE_CURSORS[handle]
+        } else if (annotationAt(pos.x, pos.y)) {
+          canvas.style.cursor = 'pointer'
+        } else {
+          canvas.style.cursor = 'crosshair'
+        }
+      }
+    })
+
     canvas.addEventListener('mouseup', e => {
+      if (isPanning) {
+        isPanning = false
+        updateCursor()
+        return
+      }
+      if (resizing) {
+        resizing = null
+        saveSession()
+        return
+      }
       if (!isDown) return
       isDown = false
       if (!draft) return
@@ -594,26 +718,58 @@
           w: Math.abs(draft.x2 - draft.x1),  h: Math.abs(draft.y2 - draft.y1)
         }
         annotations = [...annotations, { id, num, comment: '', color, box }]
-        openPopup(id, e.clientX, e.clientY)
+        selectedId = id
+        openPopup(id)
       }
       draft = null
       draw()
       renderNotes()
+      saveSession()
     })
 
     // ─── Comment popup ────────────────────────────────────────────────────────
     let currentPopupId = null
 
-    function openPopup(id, x, y) {
+    function openPopup(id) {
       const ann = annotations.find(a => a.id === id)
       if (!ann) return
       currentPopupId = id
-      const popupW = 300, popupH = 170
-      commentPopup.style.left = Math.min(x, window.innerWidth - popupW - 10) + 'px'
-      commentPopup.style.top  = Math.min(y, window.innerHeight - popupH - 10) + 'px'
+
+      // Anchor to bottom-right of box in screen coords
+      let x = window.innerWidth / 2, y = window.innerHeight / 2
+      if (ann.box) {
+        const r = canvas.getBoundingClientRect()
+        x = r.left + (ann.box.x + ann.box.w) * es()
+        y = r.top  + (ann.box.y + ann.box.h) * es()
+      }
+      const popupW = 300, popupH = 210
+      commentPopup.style.left = Math.min(Math.max(x, 10), window.innerWidth  - popupW - 10) + 'px'
+      commentPopup.style.top  = Math.min(Math.max(y, 10), window.innerHeight - popupH - 10) + 'px'
+
       commentTA.value = ann.comment || ''
+
+      // Build color swatches
+      const popupColors = document.getElementById('popup-colors')
+      popupColors.innerHTML = ''
+      COLORS.forEach(c => {
+        const btn = document.createElement('button')
+        btn.className = 'popup-swatch' + (c.value === ann.color ? ' selected' : '')
+        btn.style.background = c.value
+        btn.dataset.color = c.value
+        btn.addEventListener('click', () => {
+          annotations = annotations.map(a => a.id === id ? { ...a, color: c.value } : a)
+          popupColors.querySelectorAll('.popup-swatch').forEach(s =>
+            s.classList.toggle('selected', s.dataset.color === c.value)
+          )
+          draw()
+          renderNotes()
+          saveSession()
+        })
+        popupColors.appendChild(btn)
+      })
+
       commentPopup.classList.add('open')
-      popup = { id, x, y }
+      popup = { id }
       setTimeout(() => commentTA.focus(), 0)
     }
 
@@ -629,6 +785,7 @@
       annotations = annotations.map(a => a.id === id ? { ...a, comment: commentTA.value } : a)
       closePopup()
       renderNotes()
+      saveSession()
     }
 
     function deletePopup() {
@@ -636,9 +793,11 @@
       const id = currentPopupId
       annotations = annotations.filter(a => a.id !== id).map((a, i) => ({ ...a, num: i + 1 }))
       seq = annotations.length + 1
+      if (selectedId === id) selectedId = null
       closePopup()
       draw()
       renderNotes()
+      saveSession()
     }
 
     commentPopup.addEventListener('mousedown', e => e.stopPropagation())
@@ -667,6 +826,12 @@
       e.stopPropagation()
       const open = colorPicker.classList.toggle('open')
       colorBtn.classList.toggle('open', open)
+      if (open) {
+        const r = colorBtn.getBoundingClientRect()
+        colorPicker.style.top  = (r.bottom + 6) + 'px'
+        colorPicker.style.left = (r.left + r.width / 2) + 'px'
+        colorPicker.style.transform = 'translateX(-50%)'
+      }
     })
 
     document.addEventListener('click', closeColorPicker)
@@ -711,42 +876,116 @@
     document.getElementById('zoom-in').addEventListener('click', () => {
       if (!img) return
       zoom = Math.min(zoom * 1.1, 5)
-      draw(); renderZoom()
+      draw(); renderZoom(); saveSession()
     })
     document.getElementById('zoom-out').addEventListener('click', () => {
       if (!img) return
       zoom = Math.max(zoom * 0.9, 0.1)
-      draw(); renderZoom()
+      draw(); renderZoom(); saveSession()
     })
     document.getElementById('zoom-fit').addEventListener('click', () => {
       if (!img) return
       zoom = 1
-      draw(); renderZoom()
+      draw(); renderZoom(); saveSession()
     })
 
     canvasArea.addEventListener('wheel', e => {
       if (!img) return
       e.preventDefault()
       zoom = Math.min(Math.max(zoom * (e.deltaY < 0 ? 1.1 : 0.9), 0.1), 5)
-      draw(); renderZoom()
+      draw(); renderZoom(); saveSession()
     }, { passive: false })
 
-    // ─── Bottom bar ───────────────────────────────────────────────────────────
-    document.getElementById('btn-cancel').addEventListener('click', () => window.close())
-    document.getElementById('btn-copy').addEventListener('click', copyClose)
+    // ─── Session persistence ──────────────────────────────────────────────────
+    function saveSession() {
+      if (!img) return
+      try {
+        localStorage.setItem('pinscribe-session', JSON.stringify({
+          imgSrc: img.src,
+          imgSize,
+          annotations,
+          arrows,
+          zoom,
+          tool,
+          color
+        }))
+      } catch (_) {}
+    }
 
-    async function copyClose() {
+    function restoreSession() {
+      try {
+        const raw = localStorage.getItem('pinscribe-session')
+        if (!raw) return
+        const s = JSON.parse(raw)
+        if (!s.imgSrc) return
+        const el = new Image()
+        el.onload = () => {
+          const maxW = window.innerWidth - PANEL_W
+          const maxH = window.innerHeight - 44 - 56
+          scale = Math.min(maxW / el.width, maxH / el.height, 1)
+          img = el
+          imgSize = s.imgSize
+          annotations = s.annotations || []
+          arrows = s.arrows || []
+          zoom = s.zoom || 1
+          seq = annotations.length + 1
+          if (s.color) {
+            color = s.color
+            colorBtn.style.background = color
+            colorPicker.querySelectorAll('.color-swatch').forEach(sw =>
+              sw.classList.toggle('selected', sw.dataset.color === color)
+            )
+          }
+          if (s.tool) {
+            tool = s.tool
+            btnBox.classList.toggle('active', tool === 'box')
+            btnArrow.classList.toggle('active', tool === 'arrow')
+          }
+          canvas.classList.add('visible')
+          canvasEmpty.style.display = 'none'
+          zoomControls.classList.add('visible')
+          draw()
+          renderNotes()
+          renderZoom()
+        }
+        el.src = s.imgSrc
+      } catch (_) {}
+    }
+
+    function clearSession() {
+      localStorage.removeItem('pinscribe-session')
+      img = null
+      imgSize = { w: 0, h: 0 }
+      annotations = []
+      arrows = []
+      zoom = 1
+      seq = 1
+      draft = null
+      selectedId = null
+      canvas.classList.remove('visible')
+      canvasEmpty.style.display = 'flex'
+      zoomControls.classList.remove('visible')
+      renderNotes()
+      renderZoom()
+    }
+
+    restoreSession()
+
+    // ─── Bottom bar ───────────────────────────────────────────────────────────
+    document.getElementById('btn-cancel').addEventListener('click', clearSession)
+    document.getElementById('btn-copy').addEventListener('click', copy)
+
+    async function copy() {
       if (!img) return
       const dataUrl = await renderComposite()
       window.api.copyToClipboard(dataUrl)
-      window.close()
     }
 
     // ─── Keyboard shortcuts ───────────────────────────────────────────────────
     document.addEventListener('keydown', async e => {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'w') { e.preventDefault(); window.close() }
-      if (mod && e.key === 'Enter') { e.preventDefault(); copyClose() }
+      if (mod && e.key === 'Enter') { e.preventDefault(); copy() }
       if (mod && e.key === 'o') { e.preventDefault(); fileInput.click() }
       if (mod && e.key === 'v' && !popup) {
         e.preventDefault()
@@ -755,6 +994,34 @@
       }
       if (e.key === 'Escape') { closeColorPicker(); if (popup) closePopup() }
       if (popup && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePopup() }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId && !e.target.matches('textarea, input') && !popup) {
+        e.preventDefault()
+        const ann = annotations.find(a => a.id === selectedId)
+        if (ann) {
+          if (ann.comment.trim()) {
+            openPopup(selectedId)
+          } else {
+            annotations = annotations.filter(a => a.id !== selectedId).map((a, i) => ({ ...a, num: i + 1 }))
+            seq = annotations.length + 1
+            selectedId = null
+            draw()
+            renderNotes()
+            saveSession()
+          }
+        }
+      }
+      if (e.key === ' ' && !e.target.matches('textarea, input') && img) {
+        e.preventDefault()
+        if (!spaceHeld) { spaceHeld = true; updateCursor() }
+      }
+    })
+
+    document.addEventListener('keyup', e => {
+      if (e.key === ' ') {
+        spaceHeld = false
+        isPanning = false
+        updateCursor()
+      }
     })
 
     // ─── Composite render (output image) ─────────────────────────────────────
