@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalShortcut, Notification, dialog, shell } = require('electron')
+const { exec } = require('child_process')
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
 
@@ -73,6 +74,8 @@ function setTrayMenu(state) {
 
   if (state === 'downloading') {
     template.push({ label: 'Downloading update…', enabled: false })
+  } else if (state === 'updating') {
+    template.push({ label: 'Installing update…', enabled: false })
   } else if (state === 'ready') {
     template.push({ label: 'Restart to Update', click: () => autoUpdater.quitAndInstall() })
   } else if (state === 'uptodate') {
@@ -99,18 +102,18 @@ function createTray() {
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 
 ipcMain.on('hide-window', () => win?.hide())
-ipcMain.on('restart-for-update', async () => {
-  const cmd = 'brew upgrade --cask pinscribe && sudo xattr -rd com.apple.quarantine /Applications/PinScribe.app'
-  clipboard.writeText(cmd)
-  await dialog.showMessageBox(win, {
-    type: 'info',
-    title: 'Update PinScribe',
-    message: 'Run this command in Terminal to update:',
-    detail: cmd,
-    buttons: ['Open Terminal', 'Copied — Close'],
-    defaultId: 0
-  }).then(({ response }) => {
-    if (response === 0) shell.openExternal('x-terminal://')
+ipcMain.on('restart-for-update', () => {
+  setTrayMenu('updating')
+  win?.webContents.send('update-status', { state: 'installing' })
+  exec('/opt/homebrew/bin/brew upgrade --cask pinscribe', (err) => {
+    if (err) {
+      setTrayMenu('ready')
+      win?.webContents.send('update-status', { state: 'ready', version: autoUpdater.currentVersion?.version })
+      new Notification({ title: 'Update failed', body: 'Run: brew upgrade --cask pinscribe' }).show()
+    } else {
+      new Notification({ title: 'PinScribe updated', body: 'Restarting…' }).show()
+      setTimeout(() => app.relaunch() || app.quit(), 1500)
+    }
   })
 })
 

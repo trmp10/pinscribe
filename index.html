@@ -1414,6 +1414,11 @@
         updateText.textContent = `v${version} ready to install`
         updateProgress.style.display = 'none'
         updateRestart.style.display = 'block'
+      } else if (state === 'installing') {
+        updateText.textContent = 'Installing update…'
+        updateProgress.style.display = 'block'
+        updateBar.style.width = '100%'
+        updateRestart.style.display = 'none'
       }
     })
 
