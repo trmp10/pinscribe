@@ -9,6 +9,7 @@ let tray = null
 
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
+autoUpdater.channel = 'latest'
 
 autoUpdater.on('update-available', info => {
   autoUpdater.downloadUpdate()

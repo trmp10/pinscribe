@@ -28,7 +28,7 @@ jobs:
         id: meta
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          SHA256=$(shasum -a 256 dist/PinScribe-${VERSION}-arm64.dmg | awk '{print $1}')
+          SHA256=$(shasum -a 256 "dist/PinScribe-${VERSION}-arm64.dmg" | awk '{print $1}')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
