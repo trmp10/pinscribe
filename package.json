@@ -1,12 +1,15 @@
 {
   "name": "pinscribe",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "macOS annotation tool for design feedback",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --mac dmg",
     "publish": "electron-builder --mac dmg --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "electron": "^42.4.0",
@@ -24,6 +27,7 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.graphics-design",
+      "icon": "resources/icon.icns",
       "identity": null
     },
     "dmg": {
