@@ -5,6 +5,7 @@ const fs = require('fs')
 
 let win = null
 let tray = null
+let allowQuit = false
 
 // ─── Auto-updater ─────────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ function createWindow() {
   })
   win.loadFile('index.html')
   win.once('ready-to-show', () => win.show())
-  win.on('close', e => { e.preventDefault(); win.hide() })
+  win.on('close', e => { if (!allowQuit) { e.preventDefault(); win.hide() } })
 }
 
 function toggleWindow() {
@@ -110,6 +111,7 @@ ipcMain.on('hide-window', () => win?.hide())
 ipcMain.on('restart-for-update', () => {
   setTrayMenu('updating')
   win?.webContents.send('update-status', { state: 'installing' })
+  allowQuit = true
   autoUpdater.quitAndInstall()
 })
 
