@@ -36,7 +36,8 @@
     "publish": {
       "provider": "github",
       "owner": "trmp10",
-      "repo": "pinscribe"
+      "repo": "pinscribe",
+      "releaseType": "release"
     }
   }
 }
