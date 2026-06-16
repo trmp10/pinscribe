@@ -25,7 +25,7 @@ autoUpdater.on('update-downloaded', info => {
   win?.webContents.send('update-status', { state: 'ready', version: info.version })
 })
 
-autoUpdater.on('update-not-available', () => setTrayMenu('idle'))
+autoUpdater.on('update-not-available', () => setTrayMenu('uptodate'))
 autoUpdater.on('error', () => setTrayMenu('idle'))
 
 // ─── Window ───────────────────────────────────────────────────────────────────
@@ -74,6 +74,9 @@ function setTrayMenu(state) {
     template.push({ label: 'Downloading update…', enabled: false })
   } else if (state === 'ready') {
     template.push({ label: 'Restart to Update', click: () => autoUpdater.quitAndInstall() })
+  } else if (state === 'uptodate') {
+    template.push({ label: `Up to date — v${app.getVersion()}`, enabled: false })
+    template.push({ label: 'Check for Updates', click: () => autoUpdater.checkForUpdates() })
   } else {
     template.push({ label: 'Check for Updates', click: () => autoUpdater.checkForUpdates() })
   }

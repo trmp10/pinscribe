@@ -443,7 +443,7 @@
       <button class="zoom-btn" id="zoom-out">−</button>
       <span id="zoom-label">100%</span>
       <button class="zoom-btn" id="zoom-in">+</button>
-      <button class="zoom-btn" id="zoom-fit">Fit</button>
+      <button class="zoom-btn" id="zoom-fit" title="Fit ⌘0">Fit</button>
       <div style="width:1px;height:16px;background:#333;margin:0 4px"></div>
       <button class="zoom-btn" id="btn-undo" title="Undo ⌘Z">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -595,16 +595,12 @@
       const oldZoom = zoom
       zoom = Math.min(Math.max(newZoom, 0.1), 5)
       if (img && clientX != null) {
-        const rect = canvas.getBoundingClientRect()
-        const cx = clientX - rect.left
-        const cy = clientY - rect.top
         const ratio = zoom / oldZoom
-        const oldW = imgSize.w * scale * oldZoom
-        const newW = imgSize.w * scale * zoom
-        const oldH = imgSize.h * scale * oldZoom
-        const newH = imgSize.h * scale * zoom
-        panOffset.x += (oldW - newW) / 2 + cx * (1 - ratio)
-        panOffset.y += (oldH - newH) / 2 + cy * (1 - ratio)
+        const areaRect = canvasArea.getBoundingClientRect()
+        const mx = clientX - areaRect.left - areaRect.width / 2
+        const my = clientY - areaRect.top - areaRect.height / 2
+        panOffset.x += (mx - panOffset.x) * (1 - ratio)
+        panOffset.y += (my - panOffset.y) * (1 - ratio)
         applyPanOffset()
       }
       draw(); renderZoom(); saveSession()
@@ -1426,6 +1422,7 @@
     document.addEventListener('keydown', async e => {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'w') { e.preventDefault(); window.api.hideWindow() }
+      if (mod && e.key === '0') { e.preventDefault(); if (img) { zoom = 1; panOffset = { x: 0, y: 0 }; applyPanOffset(); draw(); renderZoom(); saveSession() } }
       if (mod && e.key === 'c' && !e.target.matches('textarea, input')) { e.preventDefault(); copy() }
       if (mod && e.key === 'd' && !e.target.matches('textarea, input')) {
         e.preventDefault()
