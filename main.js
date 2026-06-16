@@ -155,13 +155,15 @@ ipcMain.handle('auto-save', (_e, data) => {
     ensureAutosavesDir()
     const file = path.join(autosavesDir(), `${data.sessionId}.json`)
     fs.writeFileSync(file, JSON.stringify(data), 'utf8')
-    // prune to 5 most recent
+    const cutoff = Date.now() - 15 * 24 * 60 * 60 * 1000
     const files = fs.readdirSync(autosavesDir())
       .filter(f => f.endsWith('.json'))
       .map(f => ({ name: f, mtime: fs.statSync(path.join(autosavesDir(), f)).mtimeMs }))
       .sort((a, b) => b.mtime - a.mtime)
-    files.slice(5).forEach(f => {
-      try { fs.unlinkSync(path.join(autosavesDir(), f.name)) } catch {}
+    files.forEach((f, i) => {
+      if (i >= 30 || f.mtime < cutoff) {
+        try { fs.unlinkSync(path.join(autosavesDir(), f.name)) } catch {}
+      }
     })
     return true
   } catch { return false }
@@ -170,6 +172,7 @@ ipcMain.handle('auto-save', (_e, data) => {
 ipcMain.handle('get-autosaves', () => {
   try {
     ensureAutosavesDir()
+    const cutoff = Date.now() - 15 * 24 * 60 * 60 * 1000
     return fs.readdirSync(autosavesDir())
       .filter(f => f.endsWith('.json'))
       .map(f => {
@@ -180,8 +183,9 @@ ipcMain.handle('get-autosaves', () => {
         } catch { return null }
       })
       .filter(Boolean)
+      .filter(item => new Date(item.savedAt).getTime() > cutoff)
       .sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt))
-      .slice(0, 5)
+      .slice(0, 30)
   } catch { return [] }
 })
 
