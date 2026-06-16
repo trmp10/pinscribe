@@ -138,6 +138,9 @@
       flex: 1;
       position: relative;
       overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     #canvas-area.drop-highlight { outline: 2px solid #e8334a; outline-offset: -2px; }
 
@@ -1357,7 +1360,7 @@
     // ─── Keyboard shortcuts ───────────────────────────────────────────────────
     document.addEventListener('keydown', async e => {
       const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key === 'w') { e.preventDefault(); window.close() }
+      if (mod && e.key === 'w') { e.preventDefault(); window.api.hideWindow() }
       if (mod && e.key === 'c' && !e.target.matches('textarea, input')) { e.preventDefault(); copy() }
       if (mod && e.key === 'd' && !e.target.matches('textarea, input')) {
         e.preventDefault()

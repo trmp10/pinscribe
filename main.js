@@ -85,8 +85,9 @@ function setTrayMenu(state) {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'resources/tray-icon.png'))
-  tray = new Tray(icon.resize({ width: 16, height: 16 }))
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'resources/tray-icon-white.png'))
+  icon.setTemplateImage(true)
+  tray = new Tray(icon)
   tray.setToolTip('PinScribe')
   tray.on('click', toggleWindow)
   setTrayMenu('idle')
