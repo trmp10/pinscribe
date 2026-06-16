@@ -1,6 +1,6 @@
 {
   "name": "pinscribe",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "macOS annotation tool for design feedback",
   "main": "main.js",
   "scripts": {
