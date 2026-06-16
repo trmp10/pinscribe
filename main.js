@@ -83,7 +83,8 @@ function setTrayMenu(state) {
   }
 
   template.push({ type: 'separator' }, { label: 'Quit', click: () => app.exit() })
-  tray.setContextMenu(Menu.buildFromTemplate(template))
+  tray._contextMenu = Menu.buildFromTemplate(template)
+  tray.setContextMenu(null)
 }
 
 function createTray() {
@@ -92,7 +93,7 @@ function createTray() {
   tray = new Tray(icon)
   tray.setToolTip('PinScribe')
   tray.on('click', () => { win.show(); win.focus() })
-  tray.on('right-click', () => tray.popUpContextMenu())
+  tray.on('right-click', () => tray.popUpContextMenu(tray._contextMenu))
   setTrayMenu('idle')
 }
 
