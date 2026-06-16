@@ -1,5 +1,4 @@
-const { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalShortcut, Notification, dialog, shell } = require('electron')
-const { exec } = require('child_process')
+const { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalShortcut, Notification, dialog } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
 const fs = require('fs')
@@ -29,7 +28,10 @@ autoUpdater.on('update-downloaded', info => {
 })
 
 autoUpdater.on('update-not-available', () => setTrayMenu('uptodate'))
-autoUpdater.on('error', () => setTrayMenu('idle'))
+autoUpdater.on('error', (err) => {
+  setTrayMenu('idle')
+  new Notification({ title: 'Update check failed', body: err?.message || 'Could not reach update server.' }).show()
+})
 
 // ─── Window ───────────────────────────────────────────────────────────────────
 
@@ -81,9 +83,11 @@ function setTrayMenu(state) {
     template.push({ label: 'Restart to Update', click: () => autoUpdater.quitAndInstall() })
   } else if (state === 'uptodate') {
     template.push({ label: `Up to date — v${app.getVersion()}`, enabled: false })
-    template.push({ label: 'Check for Updates', click: () => autoUpdater.checkForUpdates() })
+    template.push({ label: 'Check for Updates', click: () => { setTrayMenu('checking'); autoUpdater.checkForUpdates() } })
+  } else if (state === 'checking') {
+    template.push({ label: 'Checking for updates…', enabled: false })
   } else {
-    template.push({ label: 'Check for Updates', click: () => autoUpdater.checkForUpdates() })
+    template.push({ label: 'Check for Updates', click: () => { setTrayMenu('checking'); autoUpdater.checkForUpdates() } })
   }
 
   template.push({ type: 'separator' }, { label: 'Quit', click: () => app.exit() })
@@ -106,16 +110,7 @@ ipcMain.on('hide-window', () => win?.hide())
 ipcMain.on('restart-for-update', () => {
   setTrayMenu('updating')
   win?.webContents.send('update-status', { state: 'installing' })
-  exec('/opt/homebrew/bin/brew upgrade --cask pinscribe', (err) => {
-    if (err) {
-      setTrayMenu('ready')
-      win?.webContents.send('update-status', { state: 'ready', version: autoUpdater.currentVersion?.version })
-      new Notification({ title: 'Update failed', body: 'Run: brew upgrade --cask pinscribe' }).show()
-    } else {
-      new Notification({ title: 'PinScribe updated', body: 'Restarting…' }).show()
-      setTimeout(() => app.relaunch() || app.quit(), 1500)
-    }
-  })
+  autoUpdater.quitAndInstall()
 })
 
 ipcMain.on('copy-to-clipboard', (_e, dataUrl) => {
