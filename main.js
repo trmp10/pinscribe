@@ -28,7 +28,17 @@ autoUpdater.on('update-downloaded', info => {
   win?.webContents.send('update-status', { state: 'ready', version: info.version })
 })
 
-autoUpdater.on('update-not-available', () => setTrayMenu('uptodate'))
+autoUpdater.on('update-not-available', () => {
+  setTrayMenu('uptodate')
+  win?.webContents.send('update-status', { state: 'uptodate', version: app.getVersion() })
+})
+
+function checkForUpdates() {
+  win?.show(); win?.focus()
+  setTrayMenu('checking')
+  win?.webContents.send('update-status', { state: 'checking' })
+  autoUpdater.checkForUpdates()
+}
 autoUpdater.on('error', (err) => {
   setTrayMenu('idle')
   new Notification({ title: 'Update check failed', body: err?.message || 'Could not reach update server.' }).show()
@@ -84,11 +94,11 @@ function setTrayMenu(state) {
     template.push({ label: 'Restart to Update', click: () => { allowQuit = true; autoUpdater.quitAndInstall(false, true) } })
   } else if (state === 'uptodate') {
     template.push({ label: `Up to date — v${app.getVersion()}`, enabled: false })
-    template.push({ label: 'Check for Updates', click: () => { setTrayMenu('checking'); autoUpdater.checkForUpdates() } })
+    template.push({ label: 'Check for Updates', click: () => checkForUpdates() })
   } else if (state === 'checking') {
     template.push({ label: 'Checking for updates…', enabled: false })
   } else {
-    template.push({ label: 'Check for Updates', click: () => { setTrayMenu('checking'); autoUpdater.checkForUpdates() } })
+    template.push({ label: 'Check for Updates', click: () => checkForUpdates() })
   }
 
   template.push({ type: 'separator' }, { label: 'Quit', click: () => app.exit() })
