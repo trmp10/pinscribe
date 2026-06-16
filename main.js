@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalShortcut, Notification } = require('electron')
+const { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalShortcut, Notification, dialog, shell } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
 
@@ -99,7 +99,20 @@ function createTray() {
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 
 ipcMain.on('hide-window', () => win?.hide())
-ipcMain.on('restart-for-update', () => autoUpdater.quitAndInstall())
+ipcMain.on('restart-for-update', async () => {
+  const cmd = 'brew upgrade --cask pinscribe && sudo xattr -rd com.apple.quarantine /Applications/PinScribe.app'
+  clipboard.writeText(cmd)
+  await dialog.showMessageBox(win, {
+    type: 'info',
+    title: 'Update PinScribe',
+    message: 'Run this command in Terminal to update:',
+    detail: cmd,
+    buttons: ['Open Terminal', 'Copied — Close'],
+    defaultId: 0
+  }).then(({ response }) => {
+    if (response === 0) shell.openExternal('x-terminal://')
+  })
+})
 
 ipcMain.on('copy-to-clipboard', (_e, dataUrl) => {
   clipboard.writeImage(nativeImage.createFromDataURL(dataUrl))
