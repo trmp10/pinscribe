@@ -91,7 +91,8 @@ function createTray() {
   icon.setTemplateImage(true)
   tray = new Tray(icon)
   tray.setToolTip('PinScribe')
-  tray.on('click', toggleWindow)
+  tray.on('click', () => { win.show(); win.focus() })
+  tray.on('right-click', () => tray.popUpContextMenu())
   setTrayMenu('idle')
 }
 
