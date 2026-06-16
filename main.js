@@ -88,11 +88,10 @@ function setTrayMenu(state) {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'resources/tray-icon-white.png'))
-  icon.setTemplateImage(true)
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'resources/tray-icon.png'))
   tray = new Tray(icon)
   tray.setToolTip('PinScribe')
-  tray.on('click', () => { win.show(); win.focus() })
+  tray.on('click', toggleWindow)
   tray.on('right-click', () => tray.popUpContextMenu(tray._contextMenu))
   setTrayMenu('idle')
 }
