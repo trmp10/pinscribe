@@ -787,13 +787,13 @@
       arrows.forEach(a => {
         const active = a.id === selectedArrowId || a.id === hoveredArrowId
         ctx.strokeStyle = a.color
-        ctx.lineWidth = 2
+        ctx.lineWidth = Math.max(1, 2 * s)
         ctx.globalAlpha = active ? 1 : 0.9
         if (active) { ctx.shadowColor = a.color; ctx.shadowBlur = 3 }
         drawArrowShape(a.x1 * s, a.y1 * s, a.x2 * s, a.y2 * s, a.bidirectional)
         ctx.shadowBlur = 0
         ctx.globalAlpha = 1
-        ctx.lineWidth = 2
+        ctx.lineWidth = Math.max(1, 2 * s)
         if (a.label) {
           const lx = (a.x1 + a.x2) / 2 * s
           const ly = (a.y1 + a.y2) / 2 * s
@@ -848,12 +848,13 @@
 
       if (draft) {
         ctx.strokeStyle = color
-        ctx.lineWidth = 2
         if (tool === 'box') {
+          ctx.lineWidth = 2
           ctx.setLineDash([6, 3])
           ctx.strokeRect(draft.x1 * s, draft.y1 * s, (draft.x2 - draft.x1) * s, (draft.y2 - draft.y1) * s)
           ctx.setLineDash([])
         } else {
+          ctx.lineWidth = Math.max(1, 2 * s)
           drawArrowShape(draft.x1 * s, draft.y1 * s, draft.x2 * s, draft.y2 * s, tool === 'double-arrow')
         }
       }
@@ -875,12 +876,12 @@
     }
 
     function strokeArrow(cx, x1, y1, x2, y2, lw, bidirectional = false) {
-      const headLen = Math.max(14, lw * 4)
+      const headLen = Math.max(6, lw * 5)
       const headAngle = Math.PI / 5
       const angle = Math.atan2(y2 - y1, x2 - x1)
       cx.lineCap = 'round'
       cx.lineJoin = 'round'
-      cx.lineWidth = Math.max(2.5, lw)
+      cx.lineWidth = Math.max(1, lw)
       cx.beginPath()
       cx.moveTo(x1, y1)
       cx.lineTo(x2, y2)
@@ -1753,23 +1754,59 @@
     })
 
     // ─── Composite render (output image) ─────────────────────────────────────
+    function wrapText(cx, text, font, maxWidth) {
+      cx.font = font
+      const words = text.split(' ')
+      const lines = []
+      let line = ''
+      for (const word of words) {
+        const test = line ? line + ' ' + word : word
+        if (line && cx.measureText(test).width > maxWidth) {
+          lines.push(line)
+          line = word
+        } else {
+          line = test
+        }
+      }
+      if (line) lines.push(line)
+      return lines.length ? lines : ['']
+    }
+
     async function renderComposite() {
       const PAD = 24
-      const imgScale = 1
+      const COMP_PANEL = 300
+      const pinR = 14
+      const pinFont = 12
+      const noteFont = '17px -apple-system, BlinkMacSystemFont, sans-serif'
+      const lineH = 22
+      const textX = PAD + pinR * 2 + 8
+      const textMaxW = COMP_PANEL - textX - PAD
+
       const imgW = imgSize.w
       const imgH = imgSize.h
-      const pinR = 14
       const strokeW = Math.max(2, Math.round(imgW * 0.002))
       const boxStrokeW = Math.max(1.5, Math.round(imgW * 0.0015))
-      const pinFont = 12
 
-      const COMP_PANEL = 300
+      // Re-load image into a fresh element so it paints correctly on the offscreen canvas
+      const freshImg = await new Promise((resolve, reject) => {
+        const el = new Image()
+        el.onload = () => resolve(el)
+        el.onerror = reject
+        el.src = img.src
+      })
 
+      // Pre-compute wrapped lines per annotated note
+      const tempCtx = document.createElement('canvas').getContext('2d')
       const noted = annotations.filter(a => a.comment.trim())
+      const notedItems = noted.map(a => {
+        const lines = wrapText(tempCtx, a.comment, noteFont, textMaxW)
+        const height = Math.max(pinR * 2 + 4, lines.length * lineH + 4)
+        return { ...a, lines, height }
+      })
+
       const titleH = 44
-      const itemH = Math.max(36, pinR * 2 + 12)
-      const legendH = noted.length > 0 ? 56 : 0
-      const notesH = titleH + noted.length * itemH + legendH + PAD * 2
+      const itemGap = 8
+      const notesH = titleH + notedItems.reduce((s, it) => s + it.height + itemGap, 0) + PAD * 2
       const totalH = Math.max(imgH, notesH)
       const totalW = COMP_PANEL + imgW
 
@@ -1785,27 +1822,30 @@
       cx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif'
       cx.fillText('Notes', PAD, PAD + 18)
 
-      noted.forEach((a, i) => {
-        const iy = PAD + titleH + i * itemH
-        const pinX = PAD + pinR
-        const pinY = iy + pinR
+      let noteY = PAD + titleH
+      notedItems.forEach(it => {
+        const pinCY = noteY + pinR
 
         cx.beginPath()
-        cx.arc(pinX, pinY, pinR, 0, Math.PI * 2)
-        cx.fillStyle = a.color
+        cx.arc(PAD + pinR, pinCY, pinR, 0, Math.PI * 2)
+        cx.fillStyle = it.color
         cx.fill()
 
         cx.fillStyle = '#fff'
         cx.font = `bold ${pinFont}px -apple-system, BlinkMacSystemFont, sans-serif`
         cx.textAlign = 'center'
         cx.textBaseline = 'middle'
-        cx.fillText(String(a.num), pinX, pinY + 1)
+        cx.fillText(String(it.num), PAD + pinR, pinCY + 1)
         cx.textAlign = 'left'
         cx.textBaseline = 'alphabetic'
 
         cx.fillStyle = '#222'
-        cx.font = '17px -apple-system, BlinkMacSystemFont, sans-serif'
-        cx.fillText(a.comment, PAD + pinR * 2 + 8, pinY + 5, COMP_PANEL - PAD - pinR * 2 - 16)
+        cx.font = noteFont
+        it.lines.forEach((line, i) => {
+          cx.fillText(line, textX, noteY + lineH + i * lineH)
+        })
+
+        noteY += it.height + itemGap
       })
 
       cx.strokeStyle = '#e5e5e5'
@@ -1816,15 +1856,14 @@
       cx.stroke()
 
       const imgOffY = (totalH - imgH) / 2
-      cx.drawImage(img, COMP_PANEL, imgOffY, imgW, imgH)
+      cx.drawImage(freshImg, COMP_PANEL, imgOffY, imgW, imgH)
 
       arrows.forEach(a => {
         cx.strokeStyle = a.color
-        cx.lineWidth = strokeW
-        strokeArrow(cx, COMP_PANEL + a.x1 * imgScale, imgOffY + a.y1 * imgScale, COMP_PANEL + a.x2 * imgScale, imgOffY + a.y2 * imgScale, strokeW, a.bidirectional)
+        strokeArrow(cx, COMP_PANEL + a.x1, imgOffY + a.y1, COMP_PANEL + a.x2, imgOffY + a.y2, 2, a.bidirectional)
         if (a.label) {
-          const lx = COMP_PANEL + (a.x1 + a.x2) / 2 * imgScale
-          const ly = imgOffY + (a.y1 + a.y2) / 2 * imgScale
+          const lx = COMP_PANEL + (a.x1 + a.x2) / 2
+          const ly = imgOffY + (a.y1 + a.y2) / 2
           cx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif'
           cx.textAlign = 'center'
           cx.textBaseline = 'middle'
@@ -1842,12 +1881,13 @@
       })
 
       annotations.forEach(a => {
+        if (!a.box) return
         cx.strokeStyle = a.color
         cx.lineWidth = boxStrokeW
-        if (a.box) cx.strokeRect(COMP_PANEL + a.box.x * imgScale, imgOffY + a.box.y * imgScale, a.box.w * imgScale, a.box.h * imgScale)
+        cx.strokeRect(COMP_PANEL + a.box.x, imgOffY + a.box.y, a.box.w, a.box.h)
 
-        const px = COMP_PANEL + a.box.x * imgScale
-        const py = imgOffY + a.box.y * imgScale
+        const px = COMP_PANEL + a.box.x
+        const py = imgOffY + a.box.y
 
         cx.beginPath()
         cx.arc(px, py, pinR, 0, Math.PI * 2)
