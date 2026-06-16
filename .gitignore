@@ -1,3 +1,7 @@
 node_modules/
 dist/
 out/
+src/
+*.ts
+electron.vite.config.*
+package-lock.json
