@@ -81,7 +81,7 @@ function setTrayMenu(state) {
   } else if (state === 'updating') {
     template.push({ label: 'Installing update…', enabled: false })
   } else if (state === 'ready') {
-    template.push({ label: 'Restart to Update', click: () => autoUpdater.quitAndInstall() })
+    template.push({ label: 'Restart to Update', click: () => { allowQuit = true; autoUpdater.quitAndInstall(false, true) } })
   } else if (state === 'uptodate') {
     template.push({ label: `Up to date — v${app.getVersion()}`, enabled: false })
     template.push({ label: 'Check for Updates', click: () => { setTrayMenu('checking'); autoUpdater.checkForUpdates() } })
@@ -112,7 +112,7 @@ ipcMain.on('restart-for-update', () => {
   setTrayMenu('updating')
   win?.webContents.send('update-status', { state: 'installing' })
   allowQuit = true
-  autoUpdater.quitAndInstall()
+  autoUpdater.quitAndInstall(false, true)
 })
 
 ipcMain.on('copy-to-clipboard', (_e, dataUrl) => {
@@ -200,5 +200,5 @@ app.whenReady().then(() => {
   setTimeout(() => autoUpdater.checkForUpdates(), 3000)
 })
 
-app.on('window-all-closed', () => {})
+app.on('window-all-closed', () => { if (allowQuit) app.quit() })
 app.on('will-quit', () => globalShortcut.unregisterAll())

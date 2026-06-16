@@ -664,7 +664,6 @@
     let hoveredArrowId = null
     let hoveredPinId = null
     let hoveredBoxId = null
-    let compositeTheme = 'light'
     let sessionId = null
     let autoSaveTimer = null
 
@@ -1779,11 +1778,10 @@
       c.height = totalH
       const cx = c.getContext('2d')
 
-      const isDark = compositeTheme === 'dark'
-      cx.fillStyle = isDark ? '#1a1a1a' : '#fff'
+      cx.fillStyle = '#fff'
       cx.fillRect(0, 0, totalW, totalH)
 
-      cx.fillStyle = isDark ? '#eee' : '#111'
+      cx.fillStyle = '#111'
       cx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif'
       cx.fillText('Notes', PAD, PAD + 18)
 
@@ -1805,12 +1803,12 @@
         cx.textAlign = 'left'
         cx.textBaseline = 'alphabetic'
 
-        cx.fillStyle = isDark ? '#ccc' : '#222'
+        cx.fillStyle = '#222'
         cx.font = '17px -apple-system, BlinkMacSystemFont, sans-serif'
         cx.fillText(a.comment, PAD + pinR * 2 + 8, pinY + 5, COMP_PANEL - PAD - pinR * 2 - 16)
       })
 
-      cx.strokeStyle = isDark ? '#333' : '#e5e5e5'
+      cx.strokeStyle = '#e5e5e5'
       cx.lineWidth = 1
       cx.beginPath()
       cx.moveTo(COMP_PANEL, 0)
