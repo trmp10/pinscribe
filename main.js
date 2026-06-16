@@ -13,18 +13,16 @@ autoUpdater.autoInstallOnAppQuit = true
 autoUpdater.on('update-available', info => {
   autoUpdater.downloadUpdate()
   setTrayMenu('downloading')
-  new Notification({
-    title: 'PinScribe update available',
-    body: `v${info.version} is downloading…`
-  }).show()
+  win?.webContents.send('update-status', { state: 'downloading', version: info.version, percent: 0 })
 })
 
-autoUpdater.on('update-downloaded', () => {
+autoUpdater.on('download-progress', p => {
+  win?.webContents.send('update-status', { state: 'downloading', percent: Math.round(p.percent) })
+})
+
+autoUpdater.on('update-downloaded', info => {
   setTrayMenu('ready')
-  new Notification({
-    title: 'PinScribe ready to update',
-    body: 'Click "Restart to Update" in the menu bar icon.'
-  }).show()
+  win?.webContents.send('update-status', { state: 'ready', version: info.version })
 })
 
 autoUpdater.on('update-not-available', () => setTrayMenu('idle'))
@@ -96,6 +94,7 @@ function createTray() {
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 
 ipcMain.on('hide-window', () => win?.hide())
+ipcMain.on('restart-for-update', () => autoUpdater.quitAndInstall())
 
 ipcMain.on('copy-to-clipboard', (_e, dataUrl) => {
   clipboard.writeImage(nativeImage.createFromDataURL(dataUrl))

@@ -354,6 +354,39 @@
     .help-label { color: #aaa; font-size: 13px; }
     .help-kbd { color: #fff; font-size: 12px; background: #333; border-radius: 4px; padding: 2px 7px; }
     #help-close { margin-top: 16px; width: 100%; background: #333; border: none; color: #ccc; border-radius: 7px; padding: 8px; cursor: pointer; font-family: inherit; font-size: 13px; }
+    #update-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      height: 36px;
+      background: #2a2000;
+      border-bottom: 1px solid #f59e0b44;
+      flex-shrink: 0;
+    }
+    #update-banner.visible { display: flex; }
+    #update-banner-text { color: #f59e0b; font-size: 12px; }
+    #update-progress {
+      flex: 1;
+      height: 3px;
+      background: #3a3000;
+      border-radius: 2px;
+      margin: 0 12px;
+      overflow: hidden;
+    }
+    #update-progress-bar { height: 100%; background: #f59e0b; border-radius: 2px; transition: width 0.3s; width: 0% }
+    #update-restart {
+      display: none;
+      background: #f59e0b;
+      color: #000;
+      border: none;
+      border-radius: 5px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
   </style>
 </head>
 <body>
@@ -377,6 +410,12 @@
         <div id="color-picker"></div>
       </div>
     </div>
+  </div>
+
+  <div id="update-banner">
+    <span id="update-banner-text">Downloading update…</span>
+    <div id="update-progress"><div id="update-progress-bar"></div></div>
+    <button id="update-restart">Restart to Update</button>
   </div>
 
   <div id="main">
@@ -863,7 +902,7 @@
         pushHistory()
         selectedId = hit.id
         selectedArrowId = null
-        moving = { annotationId: hit.id, startMouse: pos, startBox: { ...hit.box }, dragged: false }
+        moving = { annotationId: hit.id, startMouse: pos, startBox: { ...hit.box }, dragged: false, fromPin: true }
         draw()
         return
       }
@@ -895,8 +934,10 @@
         pos.x >= a.box.x && pos.x <= a.box.x + a.box.w &&
         pos.y >= a.box.y && pos.y <= a.box.y + a.box.h)
       if (insideBox) {
+        pushHistory()
         selectedId = insideBox.id
         selectedArrowId = null
+        moving = { annotationId: insideBox.id, startMouse: pos, startBox: { ...insideBox.box }, dragged: false, fromPin: false }
         draw()
         return
       }
@@ -1006,8 +1047,9 @@
         return
       }
       if (moving) {
-        if (!moving.dragged) openPopup(moving.annotationId)
-        else saveSession()
+        if (moving.dragged) saveSession()
+        else if (moving.fromPin !== false) openPopup(moving.annotationId)
+        // fromPin === false means inside-box click with no drag — just keep selected
         moving = null
         canvas.style.cursor = 'pointer'
         return
@@ -1356,6 +1398,29 @@
       const dataUrl = await renderComposite()
       window.api.copyToClipboard(dataUrl)
     }
+
+    // ─── Update banner ────────────────────────────────────────────────────────
+    const updateBanner   = document.getElementById('update-banner')
+    const updateText     = document.getElementById('update-banner-text')
+    const updateProgress = document.getElementById('update-progress')
+    const updateBar      = document.getElementById('update-progress-bar')
+    const updateRestart  = document.getElementById('update-restart')
+
+    window.api.onUpdateStatus(({ state, version, percent }) => {
+      updateBanner.classList.add('visible')
+      if (state === 'downloading') {
+        updateText.textContent = percent > 0 ? `Downloading update… ${percent}%` : 'Downloading update…'
+        updateBar.style.width = (percent || 0) + '%'
+        updateProgress.style.display = 'block'
+        updateRestart.style.display = 'none'
+      } else if (state === 'ready') {
+        updateText.textContent = `v${version} ready to install`
+        updateProgress.style.display = 'none'
+        updateRestart.style.display = 'block'
+      }
+    })
+
+    updateRestart.addEventListener('click', () => window.api.restartForUpdate())
 
     // ─── Keyboard shortcuts ───────────────────────────────────────────────────
     document.addEventListener('keydown', async e => {
