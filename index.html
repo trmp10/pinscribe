@@ -103,6 +103,7 @@
       padding: 20px 16px;
       gap: 4px;
       overflow-y: auto;
+      min-height: 0;
     }
 
     #notes-title { font-weight: 700; font-size: 15px; margin-bottom: 12px; }
@@ -135,13 +136,20 @@
 
     #canvas-area {
       flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       position: relative;
-      overflow: auto;
+      overflow: hidden;
     }
     #canvas-area.drop-highlight { outline: 2px solid #e8334a; outline-offset: -2px; }
+
+    #canvas-wrapper {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      line-height: 0;
+    }
+    #canvas-wrapper.visible { display: block; }
 
     #canvas-empty {
       display: flex;
@@ -293,6 +301,56 @@
       cursor: pointer;
       font-family: inherit;
     }
+    #arrow-popup {
+      position: fixed;
+      width: 240px;
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 1000;
+      padding: 12px;
+      display: none;
+    }
+    #arrow-popup.open { display: block; }
+    #arrow-input {
+      width: 100%;
+      background: #111;
+      border: 1.5px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      padding: 7px 8px;
+      outline: none;
+      font-family: inherit;
+    }
+    #arrow-input:focus { border-color: #888; }
+    #arrow-popup-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
+    #help-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #help-modal.open { display: flex; }
+    #help-box {
+      background: #1e1e1e;
+      border: 1px solid #444;
+      border-radius: 12px;
+      padding: 24px 28px;
+      min-width: 320px;
+      max-width: 400px;
+    }
+    #help-box h3 { color: #fff; font-size: 15px; margin-bottom: 16px; }
+    .help-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #2a2a2a; }
+    .help-row:last-child { border-bottom: none; }
+    .help-label { color: #aaa; font-size: 13px; }
+    .help-kbd { color: #fff; font-size: 12px; background: #333; border-radius: 4px; padding: 2px 7px; }
+    #help-close { margin-top: 16px; width: 100%; background: #333; border: none; color: #ccc; border-radius: 7px; padding: 8px; cursor: pointer; font-family: inherit; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -311,7 +369,7 @@
         </svg>
       </button>
       <div class="toolbar-divider"></div>
-      <div style="position:relative">
+      <div>
         <button id="color-btn" title="Annotation colour"></button>
         <div id="color-picker"></div>
       </div>
@@ -332,7 +390,9 @@
           <button class="empty-btn" id="btn-paste">Paste image</button>
         </div>
       </div>
-      <canvas id="canvas"></canvas>
+      <div id="canvas-wrapper">
+        <canvas id="canvas"></canvas>
+      </div>
     </div>
   </div>
 
@@ -342,10 +402,28 @@
       <span id="zoom-label">100%</span>
       <button class="zoom-btn" id="zoom-in">+</button>
       <button class="zoom-btn" id="zoom-fit">Fit</button>
+      <div style="width:1px;height:16px;background:#333;margin:0 4px"></div>
+      <button class="zoom-btn" id="btn-undo" title="Undo ⌘Z">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M2 5H8.5C10.4 5 12 6.6 12 8.5S10.4 12 8.5 12H4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M4.5 2.5L2 5l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="zoom-btn" id="btn-redo" title="Redo ⌘⇧Z">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M12 5H5.5C3.6 5 2 6.6 2 8.5S3.6 12 5.5 12H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M9.5 2.5L12 5l-2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
     <div id="action-buttons">
-      <button class="action-btn" id="btn-cancel">New <span class="kbd">⌘W</span></button>
-      <button class="action-btn primary" id="btn-copy">Copy <span class="kbd primary">⌘↩</span></button>
+      <button class="zoom-btn" id="btn-theme" title="Toggle output theme" style="margin-right:4px">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M7 1v1M7 12v1M1 7h1M12 7h1M3 3l.7.7M10.3 10.3l.7.7M10.3 3.7L11 3M3 10.3l-.7.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+      <button class="zoom-btn" id="btn-help" title="Keyboard shortcuts ?">?</button>
+      <div style="width:1px;height:16px;background:#333;margin:0 8px"></div>
+      <button class="action-btn" id="btn-cancel">New <span class="kbd">⌘N</span></button>
+      <button class="action-btn primary" id="btn-copy">Copy <span class="kbd primary">⌘C</span></button>
     </div>
   </div>
 
@@ -359,6 +437,32 @@
         <button id="comment-cancel">Cancel</button>
         <button id="comment-save">Done</button>
       </div>
+    </div>
+  </div>
+
+  <div id="arrow-popup">
+    <input id="arrow-input" placeholder="Arrow label..." />
+    <div id="arrow-popup-actions">
+      <button id="arrow-cancel" class="zoom-btn" style="width:auto;padding:4px 10px;font-size:12px">Cancel</button>
+      <button id="arrow-save" style="background:#e8334a;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit">Done</button>
+    </div>
+  </div>
+
+  <div id="help-modal">
+    <div id="help-box">
+      <h3>Keyboard shortcuts</h3>
+      <div class="help-row"><span class="help-label">Copy composite</span><span class="help-kbd">⌘C</span></div>
+      <div class="help-row"><span class="help-label">New session</span><span class="help-kbd">⌘N</span></div>
+      <div class="help-row"><span class="help-label">Open image</span><span class="help-kbd">⌘O</span></div>
+      <div class="help-row"><span class="help-label">Paste image</span><span class="help-kbd">⌘V</span></div>
+      <div class="help-row"><span class="help-label">Duplicate annotation</span><span class="help-kbd">⌘D</span></div>
+      <div class="help-row"><span class="help-label">Undo</span><span class="help-kbd">⌘Z</span></div>
+      <div class="help-row"><span class="help-label">Redo</span><span class="help-kbd">⌘⇧Z</span></div>
+      <div class="help-row"><span class="help-label">Delete selected</span><span class="help-kbd">⌫</span></div>
+      <div class="help-row"><span class="help-label">Pan canvas</span><span class="help-kbd">Space + drag</span></div>
+      <div class="help-row"><span class="help-label">Label arrow</span><span class="help-kbd">double-click arrow</span></div>
+      <div class="help-row"><span class="help-label">Close</span><span class="help-kbd">Esc</span></div>
+      <button id="help-close">Close</button>
     </div>
   </div>
 
@@ -387,14 +491,91 @@
     let annotations = []
     let arrows = []
     let draft = null
-    let popup = null
     let isDown = false
     let seq = 1
+    let history = []
+    let historyIndex = -1
+
+    function pushHistory() {
+      history = history.slice(0, historyIndex + 1)
+      history.push({ annotations: JSON.parse(JSON.stringify(annotations)), arrows: JSON.parse(JSON.stringify(arrows)), seq })
+      historyIndex = history.length - 1
+      updateUndoRedo()
+    }
+
+    function undo() {
+      if (historyIndex <= 0) return
+      historyIndex--
+      const s = history[historyIndex]
+      annotations = JSON.parse(JSON.stringify(s.annotations))
+      arrows = JSON.parse(JSON.stringify(s.arrows))
+      seq = s.seq
+      selectedId = null
+      draw(); renderNotes(); saveSession(); updateUndoRedo()
+    }
+
+    function redo() {
+      if (historyIndex >= history.length - 1) return
+      historyIndex++
+      const s = history[historyIndex]
+      annotations = JSON.parse(JSON.stringify(s.annotations))
+      arrows = JSON.parse(JSON.stringify(s.arrows))
+      seq = s.seq
+      selectedId = null
+      draw(); renderNotes(); saveSession(); updateUndoRedo()
+    }
+
+    function updateUndoRedo() {
+      const undoBtn = document.getElementById('btn-undo')
+      const redoBtn = document.getElementById('btn-redo')
+      if (undoBtn) undoBtn.style.opacity = historyIndex > 0 ? '1' : '0.3'
+      if (redoBtn) redoBtn.style.opacity = historyIndex < history.length - 1 ? '1' : '0.3'
+    }
+
+    function centerCanvas() {
+      requestAnimationFrame(() => {
+        canvasArea.scrollLeft = (canvasArea.scrollWidth - canvasArea.clientWidth) / 2
+        canvasArea.scrollTop  = (canvasArea.scrollHeight - canvasArea.clientHeight) / 2
+      })
+    }
+
     let spaceHeld = false
     let isPanning = false
-    let panStart = { mouseX: 0, mouseY: 0, scrollLeft: 0, scrollTop: 0 }
+    let panStart = { mouseX: 0, mouseY: 0, offsetX: 0, offsetY: 0 }
+    let panOffset = { x: 0, y: 0 }
+
+    function applyPanOffset() {
+      const wrapper = document.getElementById('canvas-wrapper')
+      if (wrapper) wrapper.style.transform = `translate(calc(-50% + ${panOffset.x}px), calc(-50% + ${panOffset.y}px))`
+    }
+
+    function zoomAt(newZoom, clientX, clientY) {
+      const oldZoom = zoom
+      zoom = Math.min(Math.max(newZoom, 0.1), 5)
+      if (img && clientX != null) {
+        const rect = canvas.getBoundingClientRect()
+        const cx = clientX - rect.left
+        const cy = clientY - rect.top
+        const ratio = zoom / oldZoom
+        const oldW = imgSize.w * scale * oldZoom
+        const newW = imgSize.w * scale * zoom
+        const oldH = imgSize.h * scale * oldZoom
+        const newH = imgSize.h * scale * zoom
+        panOffset.x += (oldW - newW) / 2 + cx * (1 - ratio)
+        panOffset.y += (oldH - newH) / 2 + cy * (1 - ratio)
+        applyPanOffset()
+      }
+      draw(); renderZoom(); saveSession()
+    }
     let selectedId = null
+    let selectedArrowId = null
     let resizing = null
+    let moving = null
+    let movingArrow = null
+    let hoveredArrowId = null
+    let hoveredPinId = null
+    let hoveredBoxId = null
+    let compositeTheme = 'light'
 
     const HANDLE_CURSORS = {
       nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize',
@@ -406,26 +587,19 @@
       canvas.style.cursor = spaceHeld ? (isPanning ? 'grabbing' : 'grab') : 'crosshair'
     }
 
-    function getHandles(box) {
-      return {
-        nw: { x: box.x,             y: box.y           },
-        n:  { x: box.x + box.w / 2, y: box.y           },
-        ne: { x: box.x + box.w,     y: box.y           },
-        w:  { x: box.x,             y: box.y + box.h/2 },
-        e:  { x: box.x + box.w,     y: box.y + box.h/2 },
-        sw: { x: box.x,             y: box.y + box.h   },
-        s:  { x: box.x + box.w / 2, y: box.y + box.h   },
-        se: { x: box.x + box.w,     y: box.y + box.h   }
+    function boxBorderAt(x, y) {
+      const EDGE_R   = 7  / es()
+      const CORNER_R = 12 / es()
+      for (const a of annotations) {
+        if (!a.box) continue
+        const { x: bx, y: by, w: bw, h: bh } = a.box
+        if (Math.hypot(x - (bx+bw), y - (by+bh)) <= CORNER_R)         return { id: a.id, handle: 'se' }
+        if (Math.abs(y - by)      <= EDGE_R && x >= bx && x <= bx+bw) return { id: a.id, handle: 'n' }
+        if (Math.abs(y - (by+bh)) <= EDGE_R && x >= bx && x <= bx+bw) return { id: a.id, handle: 's' }
+        if (Math.abs(x - bx)      <= EDGE_R && y >= by && y <= by+bh) return { id: a.id, handle: 'w' }
+        if (Math.abs(x - (bx+bw)) <= EDGE_R && y >= by && y <= by+bh) return { id: a.id, handle: 'e' }
       }
-    }
-
-    function handleAt(x, y) {
-      if (!selectedId) return null
-      const ann = annotations.find(a => a.id === selectedId)
-      if (!ann || !ann.box) return null
-      const r = 12 / es()
-      const se = getHandles(ann.box).se
-      return (Math.abs(se.x - x) <= r && Math.abs(se.y - y) <= r) ? 'se' : null
+      return null
     }
 
     const es = () => scale * zoom
@@ -462,6 +636,12 @@
         colorPicker.querySelectorAll('.color-swatch').forEach(s =>
           s.classList.toggle('selected', s.dataset.color === color)
         )
+        if (selectedArrowId) {
+          pushHistory()
+          arrows = arrows.map(a => a.id === selectedArrowId ? { ...a, color: c.value } : a)
+          draw()
+          saveSession()
+        }
         closeColorPicker()
       })
       colorPicker.appendChild(btn)
@@ -473,17 +653,23 @@
       el.onload = () => {
         const maxW = window.innerWidth - PANEL_W
         const maxH = window.innerHeight - 44 - 56
-        scale = Math.min(maxW / el.width, maxH / el.height, 1)
+        scale = maxW / el.width
         zoom = 1
         seq = 1
         annotations = []
         arrows = []
         selectedId = null
+        selectedArrowId = null
+        history = []
+        historyIndex = -1
+        panOffset = { x: 0, y: 0 }
         img = el
         imgSize = { w: el.width, h: el.height }
         canvas.classList.add('visible')
+        document.getElementById('canvas-wrapper').classList.add('visible')
         canvasEmpty.style.display = 'none'
         zoomControls.classList.add('visible')
+        applyPanOffset()
         draw()
         renderNotes()
         renderZoom()
@@ -507,18 +693,50 @@
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
       arrows.forEach(a => {
+        const active = a.id === selectedArrowId || a.id === hoveredArrowId
         ctx.strokeStyle = a.color
         ctx.lineWidth = 2
+        ctx.globalAlpha = active ? 1 : 0.9
+        if (active) { ctx.shadowColor = a.color; ctx.shadowBlur = 3 }
         drawArrowShape(a.x1 * s, a.y1 * s, a.x2 * s, a.y2 * s)
+        ctx.shadowBlur = 0
+        ctx.globalAlpha = 1
+        ctx.lineWidth = 2
+        if (a.label) {
+          const lx = (a.x1 + a.x2) / 2 * s
+          const ly = (a.y1 + a.y2) / 2 * s
+          ctx.font = '12px -apple-system, sans-serif'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          const tw = ctx.measureText(a.label).width
+          const ph = 18, pw = tw + 12, pr = 5
+          const px = lx - pw / 2, py = ly - ph / 2
+          ctx.fillStyle = a.color
+          ctx.beginPath()
+          ctx.roundRect(px, py, pw, ph, pr)
+          ctx.fill()
+          ctx.fillStyle = '#fff'
+          ctx.fillText(a.label, lx, ly)
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'alphabetic'
+        }
       })
 
       annotations.forEach(a => {
+        const boxSelected = a.id === selectedId && a.box
+        const boxHovered = a.id === hoveredBoxId && a.box
         ctx.strokeStyle = a.color
-        ctx.lineWidth = 2
+        ctx.lineWidth = boxHovered ? 2.5 : 2
+        if (boxSelected) { ctx.shadowColor = a.color; ctx.shadowBlur = 8 }
+        else if (boxHovered) { ctx.shadowColor = a.color; ctx.shadowBlur = 4 }
         if (a.box) ctx.strokeRect(a.box.x * s, a.box.y * s, a.box.w * s, a.box.h * s)
-        const px = a.box ? a.box.x * s : a.point.x * s
-        const py = a.box ? a.box.y * s : a.point.y * s
+        ctx.shadowBlur = 0
+        ctx.lineWidth = 2
+        const px = a.box ? a.box.x * s : a.point?.x * s ?? 0
+        const py = a.box ? a.box.y * s : a.point?.y * s ?? 0
+        if (a.id === hoveredPinId) { ctx.shadowColor = a.color; ctx.shadowBlur = 6 }
         drawPin(px, py, a.num, a.color)
+        ctx.shadowBlur = 0
       })
 
       if (draft) {
@@ -533,18 +751,6 @@
         }
       }
 
-      if (selectedId) {
-        const sel = annotations.find(a => a.id === selectedId)
-        if (sel && sel.box) {
-          const hs = 5
-          const se = getHandles(sel.box).se
-          ctx.fillStyle = '#fff'
-          ctx.strokeStyle = sel.color
-          ctx.lineWidth = 1.5
-          ctx.fillRect(se.x * s - hs, se.y * s - hs, hs * 2, hs * 2)
-          ctx.strokeRect(se.x * s - hs, se.y * s - hs, hs * 2, hs * 2)
-        }
-      }
     }
 
     function drawPin(x, y, num, c) {
@@ -561,17 +767,25 @@
       ctx.textBaseline = 'alphabetic'
     }
 
-    function drawArrowShape(x1, y1, x2, y2) {
-      const headLen = 14
+    function strokeArrow(cx, x1, y1, x2, y2, lw) {
+      const headLen = Math.max(22, lw * 6)
+      const headAngle = Math.PI / 5
       const angle = Math.atan2(y2 - y1, x2 - x1)
-      ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.lineTo(x2, y2)
-      ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6))
-      ctx.moveTo(x2, y2)
-      ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6))
-      ctx.stroke()
+      cx.lineCap = 'round'
+      cx.lineJoin = 'round'
+      cx.lineWidth = Math.max(2.5, lw)
+      cx.beginPath()
+      cx.moveTo(x1, y1)
+      cx.lineTo(x2, y2)
+      cx.lineTo(x2 - headLen * Math.cos(angle - headAngle), y2 - headLen * Math.sin(angle - headAngle))
+      cx.moveTo(x2, y2)
+      cx.lineTo(x2 - headLen * Math.cos(angle + headAngle), y2 - headLen * Math.sin(angle + headAngle))
+      cx.stroke()
+      cx.lineCap = 'butt'
+      cx.lineJoin = 'miter'
     }
+
+    const drawArrowShape = (x1, y1, x2, y2) => strokeArrow(ctx, x1, y1, x2, y2, ctx.lineWidth)
 
     // ─── Notes panel ──────────────────────────────────────────────────────────
     function renderNotes() {
@@ -618,33 +832,74 @@
       })
     }
 
+    function arrowAt(x, y) {
+      const threshold = 12 / es()
+      return arrows.find(a => {
+        const dx = a.x2 - a.x1, dy = a.y2 - a.y1
+        const lenSq = dx * dx + dy * dy
+        if (lenSq === 0) return Math.hypot(x - a.x1, y - a.y1) <= threshold
+        const t = Math.max(0, Math.min(1, ((x - a.x1) * dx + (y - a.y1) * dy) / lenSq))
+        return Math.hypot(x - (a.x1 + t * dx), y - (a.y1 + t * dy)) <= threshold
+      })
+    }
+
     canvas.addEventListener('mousedown', e => {
       if (spaceHeld) {
         isPanning = true
-        panStart = { mouseX: e.clientX, mouseY: e.clientY, scrollLeft: canvasArea.scrollLeft, scrollTop: canvasArea.scrollTop }
+        panStart = { mouseX: e.clientX, mouseY: e.clientY, offsetX: panOffset.x, offsetY: panOffset.y }
         updateCursor()
         return
       }
-      if (popup) return
       closeColorPicker()
       const pos = canvasPos(e)
 
       const hit = annotationAt(pos.x, pos.y)
       if (hit) {
+        if (currentPopupId === hit.id) { closePopup(); return }
+        if (currentPopupId) closePopup()
+        pushHistory()
         selectedId = hit.id
+        selectedArrowId = null
+        moving = { annotationId: hit.id, startMouse: pos, startBox: { ...hit.box }, dragged: false }
         draw()
-        openPopup(hit.id)
         return
       }
 
-      const handle = handleAt(pos.x, pos.y)
-      if (handle) {
-        const ann = annotations.find(a => a.id === selectedId)
-        resizing = { annotationId: selectedId, handle, startMouse: pos, startBox: { ...ann.box } }
+      if (currentPopupId) { closePopup(); return }
+
+      const borderHit = boxBorderAt(pos.x, pos.y)
+      if (borderHit) {
+        const ann = annotations.find(a => a.id === borderHit.id)
+        pushHistory()
+        selectedId = borderHit.id
+        selectedArrowId = null
+        resizing = { annotationId: borderHit.id, handle: borderHit.handle, startMouse: pos, startBox: { ...ann.box } }
+        draw()
+        return
+      }
+
+      const arrowHit = arrowAt(pos.x, pos.y)
+      if (arrowHit) {
+        pushHistory()
+        selectedArrowId = arrowHit.id
+        selectedId = null
+        movingArrow = { id: arrowHit.id, startMouse: pos, start: { x1: arrowHit.x1, y1: arrowHit.y1, x2: arrowHit.x2, y2: arrowHit.y2 }, dragged: false }
+        draw()
+        return
+      }
+
+      const insideBox = annotations.find(a => a.box &&
+        pos.x >= a.box.x && pos.x <= a.box.x + a.box.w &&
+        pos.y >= a.box.y && pos.y <= a.box.y + a.box.h)
+      if (insideBox) {
+        selectedId = insideBox.id
+        selectedArrowId = null
+        draw()
         return
       }
 
       selectedId = null
+      selectedArrowId = null
       isDown = true
       draft = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y }
       draw()
@@ -652,8 +907,9 @@
 
     canvas.addEventListener('mousemove', e => {
       if (isPanning) {
-        canvasArea.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.mouseX)
-        canvasArea.scrollTop  = panStart.scrollTop  - (e.clientY - panStart.mouseY)
+        panOffset.x = panStart.offsetX + (e.clientX - panStart.mouseX)
+        panOffset.y = panStart.offsetY + (e.clientY - panStart.mouseY)
+        applyPanOffset()
         return
       }
       if (resizing) {
@@ -671,6 +927,35 @@
         draw()
         return
       }
+      if (moving) {
+        const pos = canvasPos(e)
+        const dx = pos.x - moving.startMouse.x
+        const dy = pos.y - moving.startMouse.y
+        if (!moving.dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD / es()) return
+        moving.dragged = true
+        canvas.style.cursor = 'grabbing'
+        if (moving.startBox) {
+          annotations = annotations.map(a => a.id === moving.annotationId
+            ? { ...a, box: { ...moving.startBox, x: moving.startBox.x + dx, y: moving.startBox.y + dy } }
+            : a)
+        }
+        draw()
+        return
+      }
+      if (movingArrow) {
+        const pos = canvasPos(e)
+        const dx = pos.x - movingArrow.startMouse.x
+        const dy = pos.y - movingArrow.startMouse.y
+        if (!movingArrow.dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD / es()) return
+        movingArrow.dragged = true
+        canvas.style.cursor = 'grabbing'
+        const { start } = movingArrow
+        arrows = arrows.map(a => a.id === movingArrow.id
+          ? { ...a, x1: start.x1 + dx, y1: start.y1 + dy, x2: start.x2 + dx, y2: start.y2 + dy }
+          : a)
+        draw()
+        return
+      }
       if (isDown) {
         const pos = canvasPos(e)
         draft = { ...draft, x2: pos.x, y2: pos.y }
@@ -679,10 +964,26 @@
       }
       if (!spaceHeld) {
         const pos = canvasPos(e)
-        const handle = handleAt(pos.x, pos.y)
-        if (handle) {
-          canvas.style.cursor = HANDLE_CURSORS[handle]
-        } else if (annotationAt(pos.x, pos.y)) {
+        const border = boxBorderAt(pos.x, pos.y)
+        const arrowHover = arrowAt(pos.x, pos.y)
+        const newHoveredArrow = arrowHover ? arrowHover.id : null
+        if (newHoveredArrow !== hoveredArrowId) { hoveredArrowId = newHoveredArrow; draw() }
+
+        const pinHover = annotationAt(pos.x, pos.y)
+        const newHoveredPin = pinHover ? pinHover.id : null
+        if (newHoveredPin !== hoveredPinId) { hoveredPinId = newHoveredPin; draw() }
+
+        const insideBox = annotations.find(a => a.box &&
+          pos.x >= a.box.x && pos.x <= a.box.x + a.box.w &&
+          pos.y >= a.box.y && pos.y <= a.box.y + a.box.h)
+        const newHoveredBox = (insideBox || border) ? (insideBox || annotations.find(a => a.id === border?.id))?.id ?? null : null
+        if (newHoveredBox !== hoveredBoxId) { hoveredBoxId = newHoveredBox; draw() }
+
+        if (pinHover || arrowHover) {
+          canvas.style.cursor = 'pointer'
+        } else if (border) {
+          canvas.style.cursor = HANDLE_CURSORS[border.handle]
+        } else if (insideBox) {
           canvas.style.cursor = 'pointer'
         } else {
           canvas.style.cursor = 'crosshair'
@@ -701,6 +1002,19 @@
         saveSession()
         return
       }
+      if (moving) {
+        if (!moving.dragged) openPopup(moving.annotationId)
+        else saveSession()
+        moving = null
+        canvas.style.cursor = 'pointer'
+        return
+      }
+      if (movingArrow) {
+        if (movingArrow.dragged) saveSession()
+        movingArrow = null
+        canvas.style.cursor = 'pointer'
+        return
+      }
       if (!isDown) return
       isDown = false
       if (!draft) return
@@ -709,6 +1023,7 @@
       if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) { draft = null; draw(); return }
 
       const id = 'shape-' + Date.now()
+      pushHistory()
       if (tool === 'arrow') {
         arrows = [...arrows, { id, x1: draft.x1, y1: draft.y1, x2: draft.x2, y2: draft.y2, color }]
       } else {
@@ -735,18 +1050,15 @@
       if (!ann) return
       currentPopupId = id
 
-      // Anchor to bottom-right of box in screen coords
-      let x = window.innerWidth / 2, y = window.innerHeight / 2
-      if (ann.box) {
-        const r = canvas.getBoundingClientRect()
-        x = r.left + (ann.box.x + ann.box.w) * es()
-        y = r.top  + (ann.box.y + ann.box.h) * es()
-      }
+      const r = canvas.getBoundingClientRect()
+      const x = r.left + (ann.box.x + ann.box.w) * es()
+      const y = r.top  + (ann.box.y + ann.box.h) * es()
       const popupW = 300, popupH = 210
       commentPopup.style.left = Math.min(Math.max(x, 10), window.innerWidth  - popupW - 10) + 'px'
       commentPopup.style.top  = Math.min(Math.max(y, 10), window.innerHeight - popupH - 10) + 'px'
 
       commentTA.value = ann.comment || ''
+      setTimeout(() => { commentTA.setSelectionRange(commentTA.value.length, commentTA.value.length) }, 10)
 
       // Build color swatches
       const popupColors = document.getElementById('popup-colors')
@@ -769,31 +1081,36 @@
       })
 
       commentPopup.classList.add('open')
-      popup = { id }
       setTimeout(() => commentTA.focus(), 0)
     }
 
     function closePopup() {
       commentPopup.classList.remove('open')
-      popup = null
       currentPopupId = null
     }
 
     function savePopup() {
       if (!currentPopupId) return
       const id = currentPopupId
+      pushHistory()
       annotations = annotations.map(a => a.id === id ? { ...a, comment: commentTA.value } : a)
       closePopup()
       renderNotes()
       saveSession()
     }
 
+    function renumber() {
+      annotations = annotations.map((a, i) => ({ ...a, num: i + 1 }))
+      seq = annotations.length + 1
+    }
+
     function deletePopup() {
       if (!currentPopupId) return
       const id = currentPopupId
-      annotations = annotations.filter(a => a.id !== id).map((a, i) => ({ ...a, num: i + 1 }))
-      seq = annotations.length + 1
+      pushHistory()
       if (selectedId === id) selectedId = null
+      annotations = annotations.filter(a => a.id !== id)
+      renumber()
       closePopup()
       draw()
       renderNotes()
@@ -801,6 +1118,47 @@
     }
 
     commentPopup.addEventListener('mousedown', e => e.stopPropagation())
+
+    // ─── Arrow label popup ────────────────────────────────────────────────────
+    let arrowPopupId = null
+    const arrowPopup  = document.getElementById('arrow-popup')
+    const arrowInput  = document.getElementById('arrow-input')
+
+    function openArrowPopup(id) {
+      const a = arrows.find(x => x.id === id)
+      if (!a) return
+      arrowPopupId = id
+      const rect = canvas.getBoundingClientRect()
+      const mx = rect.left + (a.x1 + a.x2) / 2 * es()
+      const my = rect.top  + (a.y1 + a.y2) / 2 * es()
+      arrowPopup.style.left = Math.min(Math.max(mx - 120, 10), window.innerWidth - 250) + 'px'
+      arrowPopup.style.top  = Math.min(my - 60, window.innerHeight - 80) + 'px'
+      arrowInput.value = a.label || ''
+      arrowPopup.classList.add('open')
+      setTimeout(() => arrowInput.focus(), 0)
+    }
+
+    function closeArrowPopup() { arrowPopup.classList.remove('open'); arrowPopupId = null }
+    function saveArrowPopup() {
+      if (!arrowPopupId) return
+      pushHistory()
+      arrows = arrows.map(a => a.id === arrowPopupId ? { ...a, label: arrowInput.value } : a)
+      closeArrowPopup(); draw(); saveSession()
+    }
+
+    arrowPopup.addEventListener('mousedown', e => e.stopPropagation())
+    document.getElementById('arrow-save').addEventListener('click', saveArrowPopup)
+    document.getElementById('arrow-cancel').addEventListener('click', closeArrowPopup)
+    arrowInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); saveArrowPopup() }
+      if (e.key === 'Escape') closeArrowPopup()
+    })
+
+    canvas.addEventListener('dblclick', e => {
+      const pos = canvasPos(e)
+      const hit = arrowAt(pos.x, pos.y)
+      if (hit) openArrowPopup(hit.id)
+    })
     document.getElementById('comment-save').addEventListener('click', savePopup)
     document.getElementById('comment-cancel').addEventListener('click', closePopup)
     document.getElementById('comment-delete').addEventListener('click', deletePopup)
@@ -873,27 +1231,20 @@
     })
 
     // ─── Zoom ─────────────────────────────────────────────────────────────────
-    document.getElementById('zoom-in').addEventListener('click', () => {
-      if (!img) return
-      zoom = Math.min(zoom * 1.1, 5)
-      draw(); renderZoom(); saveSession()
-    })
-    document.getElementById('zoom-out').addEventListener('click', () => {
-      if (!img) return
-      zoom = Math.max(zoom * 0.9, 0.1)
-      draw(); renderZoom(); saveSession()
-    })
+    document.getElementById('zoom-in').addEventListener('click', () => { if (img) zoomAt(zoom * 1.1) })
+    document.getElementById('zoom-out').addEventListener('click', () => { if (img) zoomAt(zoom * 0.9) })
     document.getElementById('zoom-fit').addEventListener('click', () => {
       if (!img) return
       zoom = 1
+      panOffset = { x: 0, y: 0 }
+      applyPanOffset()
       draw(); renderZoom(); saveSession()
     })
 
     canvasArea.addEventListener('wheel', e => {
       if (!img) return
       e.preventDefault()
-      zoom = Math.min(Math.max(zoom * (e.deltaY < 0 ? 1.1 : 0.9), 0.1), 5)
-      draw(); renderZoom(); saveSession()
+      zoomAt(zoom * (e.deltaY < 0 ? 1.1 : 0.9), e.clientX, e.clientY)
     }, { passive: false })
 
     // ─── Session persistence ──────────────────────────────────────────────────
@@ -922,7 +1273,7 @@
         el.onload = () => {
           const maxW = window.innerWidth - PANEL_W
           const maxH = window.innerHeight - 44 - 56
-          scale = Math.min(maxW / el.width, maxH / el.height, 1)
+          scale = maxW / el.width
           img = el
           imgSize = s.imgSize
           annotations = s.annotations || []
@@ -942,6 +1293,7 @@
             btnArrow.classList.toggle('active', tool === 'arrow')
           }
           canvas.classList.add('visible')
+          document.getElementById('canvas-wrapper').classList.add('visible')
           canvasEmpty.style.display = 'none'
           zoomControls.classList.add('visible')
           draw()
@@ -962,7 +1314,11 @@
       seq = 1
       draft = null
       selectedId = null
+      selectedArrowId = null
+      moving = null
+      movingArrow = null
       canvas.classList.remove('visible')
+      document.getElementById('canvas-wrapper').classList.remove('visible')
       canvasEmpty.style.display = 'flex'
       zoomControls.classList.remove('visible')
       renderNotes()
@@ -971,9 +1327,26 @@
 
     restoreSession()
 
+    // ─── Theme toggle ─────────────────────────────────────────────────────────
+    document.getElementById('btn-theme').addEventListener('click', () => {
+      compositeTheme = compositeTheme === 'light' ? 'dark' : 'light'
+      const btn = document.getElementById('btn-theme')
+      btn.style.color = compositeTheme === 'dark' ? '#f59e0b' : ''
+      btn.title = compositeTheme === 'dark' ? 'Output: dark' : 'Output: light'
+    })
+
+    // ─── Help modal ───────────────────────────────────────────────────────────
+    const helpModal = document.getElementById('help-modal')
+    document.getElementById('btn-help').addEventListener('click', () => helpModal.classList.add('open'))
+    document.getElementById('help-close').addEventListener('click', () => helpModal.classList.remove('open'))
+    helpModal.addEventListener('click', e => { if (e.target === helpModal) helpModal.classList.remove('open') })
+
     // ─── Bottom bar ───────────────────────────────────────────────────────────
     document.getElementById('btn-cancel').addEventListener('click', clearSession)
     document.getElementById('btn-copy').addEventListener('click', copy)
+    document.getElementById('btn-undo').addEventListener('click', undo)
+    document.getElementById('btn-redo').addEventListener('click', redo)
+    updateUndoRedo()
 
     async function copy() {
       if (!img) return
@@ -985,28 +1358,59 @@
     document.addEventListener('keydown', async e => {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'w') { e.preventDefault(); window.close() }
-      if (mod && e.key === 'Enter') { e.preventDefault(); copy() }
+      if (mod && e.key === 'c' && !e.target.matches('textarea, input')) { e.preventDefault(); copy() }
+      if (mod && e.key === 'd' && !e.target.matches('textarea, input')) {
+        e.preventDefault()
+        if (selectedId) {
+          const ann = annotations.find(a => a.id === selectedId)
+          if (ann) {
+            pushHistory()
+            const offset = 20 / es()
+            const id = 'shape-' + Date.now()
+            const newAnn = { ...ann, id, num: seq++,
+              box: ann.box ? { ...ann.box, x: ann.box.x + offset, y: ann.box.y + offset } : ann.box,
+              point: ann.point ? { x: ann.point.x + offset, y: ann.point.y + offset } : ann.point
+            }
+            annotations = [...annotations, newAnn]
+            selectedId = id
+            draw(); renderNotes(); saveSession()
+          }
+        }
+      }
+      if (mod && e.key === 'n') { e.preventDefault(); clearSession() }
       if (mod && e.key === 'o') { e.preventDefault(); fileInput.click() }
-      if (mod && e.key === 'v' && !popup) {
+      if (mod && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+      if (mod && e.key === 'z' && e.shiftKey) { e.preventDefault(); redo() }
+      if (mod && e.key === 'v' && !currentPopupId) {
         e.preventDefault()
         const dataUrl = await window.api.pasteImage()
         if (dataUrl) loadImage(dataUrl)
       }
-      if (e.key === 'Escape') { closeColorPicker(); if (popup) closePopup() }
-      if (popup && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePopup() }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId && !e.target.matches('textarea, input') && !popup) {
-        e.preventDefault()
-        const ann = annotations.find(a => a.id === selectedId)
-        if (ann) {
-          if (ann.comment.trim()) {
-            openPopup(selectedId)
-          } else {
-            annotations = annotations.filter(a => a.id !== selectedId).map((a, i) => ({ ...a, num: i + 1 }))
-            seq = annotations.length + 1
-            selectedId = null
-            draw()
-            renderNotes()
-            saveSession()
+      if (e.key === 'Escape') { closeColorPicker(); if (currentPopupId) closePopup(); closeArrowPopup(); helpModal.classList.remove('open') }
+      if (currentPopupId && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePopup() }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.matches('textarea, input') && !currentPopupId) {
+        if (selectedArrowId) {
+          e.preventDefault()
+          pushHistory()
+          arrows = arrows.filter(a => a.id !== selectedArrowId)
+          selectedArrowId = null
+          draw()
+          saveSession()
+        } else if (selectedId) {
+          e.preventDefault()
+          const ann = annotations.find(a => a.id === selectedId)
+          if (ann) {
+            if (ann.comment.trim()) {
+              openPopup(selectedId)
+            } else {
+              pushHistory()
+              annotations = annotations.filter(a => a.id !== selectedId)
+              renumber()
+              selectedId = null
+              draw()
+              renderNotes()
+              saveSession()
+            }
           }
         }
       }
@@ -1026,13 +1430,15 @@
 
     // ─── Composite render (output image) ─────────────────────────────────────
     async function renderComposite() {
-      const COMP_PANEL = 300
       const PAD = 24
+      const imgScale = 1
       const imgW = imgSize.w
       const imgH = imgSize.h
       const pinR = 14
       const strokeW = Math.max(2, Math.round(imgW * 0.002))
       const pinFont = 12
+
+      const COMP_PANEL = 300
 
       const noted = annotations.filter(a => a.comment.trim())
       const titleH = 44
@@ -1047,10 +1453,11 @@
       c.height = totalH
       const cx = c.getContext('2d')
 
-      cx.fillStyle = '#fff'
+      const isDark = compositeTheme === 'dark'
+      cx.fillStyle = isDark ? '#1a1a1a' : '#fff'
       cx.fillRect(0, 0, totalW, totalH)
 
-      cx.fillStyle = '#111'
+      cx.fillStyle = isDark ? '#eee' : '#111'
       cx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif'
       cx.fillText('Notes', PAD, PAD + 18)
 
@@ -1072,20 +1479,12 @@
         cx.textAlign = 'left'
         cx.textBaseline = 'alphabetic'
 
-        cx.fillStyle = '#222'
+        cx.fillStyle = isDark ? '#ccc' : '#222'
         cx.font = '17px -apple-system, BlinkMacSystemFont, sans-serif'
         cx.fillText(a.comment, PAD + pinR * 2 + 8, pinY + 5, COMP_PANEL - PAD - pinR * 2 - 16)
       })
 
-      if (noted.length > 0) {
-        const legY = PAD + titleH + noted.length * itemH + 10
-        cx.fillStyle = '#aaa'
-        cx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif'
-        cx.fillText('Numbers map to the notes above.', PAD, legY)
-        cx.fillText('Outlined shapes are user-added annotations.', PAD, legY + 18)
-      }
-
-      cx.strokeStyle = '#e5e5e5'
+      cx.strokeStyle = isDark ? '#333' : '#e5e5e5'
       cx.lineWidth = 1
       cx.beginPath()
       cx.moveTo(COMP_PANEL, 0)
@@ -1098,16 +1497,33 @@
       arrows.forEach(a => {
         cx.strokeStyle = a.color
         cx.lineWidth = strokeW
-        compArrow(cx, COMP_PANEL + a.x1, imgOffY + a.y1, COMP_PANEL + a.x2, imgOffY + a.y2, strokeW)
+        strokeArrow(cx, COMP_PANEL + a.x1 * imgScale, imgOffY + a.y1 * imgScale, COMP_PANEL + a.x2 * imgScale, imgOffY + a.y2 * imgScale, strokeW)
+        if (a.label) {
+          const lx = COMP_PANEL + (a.x1 + a.x2) / 2 * imgScale
+          const ly = imgOffY + (a.y1 + a.y2) / 2 * imgScale
+          cx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif'
+          cx.textAlign = 'center'
+          cx.textBaseline = 'middle'
+          const tw = cx.measureText(a.label).width
+          const ph = 22, pw = tw + 14, pr = 6
+          cx.fillStyle = a.color
+          cx.beginPath()
+          cx.roundRect(lx - pw / 2, ly - ph / 2, pw, ph, pr)
+          cx.fill()
+          cx.fillStyle = '#fff'
+          cx.fillText(a.label, lx, ly)
+          cx.textAlign = 'left'
+          cx.textBaseline = 'alphabetic'
+        }
       })
 
       annotations.forEach(a => {
         cx.strokeStyle = a.color
         cx.lineWidth = strokeW
-        if (a.box) cx.strokeRect(COMP_PANEL + a.box.x, imgOffY + a.box.y, a.box.w, a.box.h)
+        if (a.box) cx.strokeRect(COMP_PANEL + a.box.x * imgScale, imgOffY + a.box.y * imgScale, a.box.w * imgScale, a.box.h * imgScale)
 
-        const px = a.box ? COMP_PANEL + a.box.x : COMP_PANEL + a.point.x
-        const py = a.box ? imgOffY + a.box.y : imgOffY + a.point.y
+        const px = COMP_PANEL + a.box.x * imgScale
+        const py = imgOffY + a.box.y * imgScale
 
         cx.beginPath()
         cx.arc(px, py, pinR, 0, Math.PI * 2)
@@ -1126,17 +1542,6 @@
       return c.toDataURL('image/png')
     }
 
-    function compArrow(cx, x1, y1, x2, y2, lw) {
-      const headLen = Math.max(16, lw * 5)
-      const angle = Math.atan2(y2 - y1, x2 - x1)
-      cx.beginPath()
-      cx.moveTo(x1, y1)
-      cx.lineTo(x2, y2)
-      cx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6))
-      cx.moveTo(x2, y2)
-      cx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6))
-      cx.stroke()
-    }
   </script>
 </body>
 </html>
