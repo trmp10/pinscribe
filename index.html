@@ -188,11 +188,12 @@
       border-top: 1px solid #333;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
       padding: 0 20px;
+      position: relative;
     }
 
-    #zoom-controls { display: flex; align-items: center; gap: 8px; visibility: hidden; }
+    #zoom-controls { display: flex; align-items: center; gap: 8px; visibility: hidden; position: absolute; left: 20px; }
     #zoom-controls.visible { visibility: visible; }
 
     .zoom-btn {
@@ -388,6 +389,32 @@
       cursor: pointer;
       font-family: inherit;
     }
+    #history-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000;
+      display: none; align-items: center; justify-content: center;
+    }
+    #history-modal.open { display: flex; }
+    #history-box {
+      background: #1e1e1e; border: 1px solid #333; border-radius: 14px;
+      padding: 24px 28px; min-width: 400px; max-width: 860px; width: 90vw;
+    }
+    #history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    #history-title { color: #fff; font-size: 15px; font-weight: 600; }
+    #history-close {
+      background: none; border: none; color: #666; font-size: 18px; cursor: pointer;
+      line-height: 1; padding: 2px 6px; border-radius: 4px;
+    }
+    #history-close:hover { color: #ccc; }
+    #history-cards { display: flex; gap: 12px; flex-wrap: wrap; }
+    .history-card {
+      flex: 0 0 auto; width: 148px; cursor: pointer; border-radius: 9px;
+      border: 2px solid transparent; overflow: hidden; transition: border-color 0.15s, transform 0.1s;
+      background: #111;
+    }
+    .history-card:hover { border-color: #e8334a; transform: scale(1.02); }
+    .history-thumb { width: 148px; height: 98px; object-fit: cover; display: block; }
+    .history-date { color: #666; font-size: 11px; padding: 6px 8px; }
+    #history-empty { color: #555; font-size: 13px; text-align: center; padding: 24px 0; }
   </style>
 </head>
 <body>
@@ -405,11 +432,24 @@
           <path d="M3 13L13 3M13 3H8M13 3V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
+      <button id="btn-double-arrow" class="tool-btn" title="Double arrow">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M2 8h12M2 8l3-2.5M2 8l3 2.5M14 8l-3-2.5M14 8l-3 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <div class="toolbar-divider"></div>
       <div>
         <button id="color-btn" title="Annotation colour"></button>
         <div id="color-picker"></div>
       </div>
+    </div>
+    <div style="position:absolute;top:0;bottom:0;right:16px;display:flex;align-items:center;-webkit-app-region:no-drag">
+      <button id="btn-history" class="tool-btn" title="History">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M7.5 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -460,13 +500,12 @@
       </button>
     </div>
     <div id="action-buttons">
-      <button class="zoom-btn" id="btn-theme" title="Toggle output theme" style="margin-right:4px">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M7 1v1M7 12v1M1 7h1M12 7h1M3 3l.7.7M10.3 10.3l.7.7M10.3 3.7L11 3M3 10.3l-.7.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-      <button class="zoom-btn" id="btn-help" title="Keyboard shortcuts ?">?</button>
-      <div style="width:1px;height:16px;background:#333;margin:0 8px"></div>
-      <button class="action-btn" id="btn-cancel">New <span class="kbd">⌘N</span></button>
+      <button class="action-btn" id="btn-save-png">Save PNG</button>
       <button class="action-btn primary" id="btn-copy">Copy <span class="kbd primary">⌘C</span></button>
+    </div>
+    <div style="position:absolute;right:20px;display:flex;align-items:center;gap:8px;">
+      <button class="action-btn" id="btn-cancel">New <span class="kbd">⌘N</span></button>
+      <button class="zoom-btn" id="btn-help" title="Keyboard shortcuts ?">?</button>
     </div>
   </div>
 
@@ -488,6 +527,16 @@
     <div id="arrow-popup-actions">
       <button id="arrow-cancel" class="zoom-btn" style="width:auto;padding:4px 10px;font-size:12px">Cancel</button>
       <button id="arrow-save" style="background:#e8334a;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit">Done</button>
+    </div>
+  </div>
+
+  <div id="history-modal">
+    <div id="history-box">
+      <div id="history-header">
+        <span id="history-title">History</span>
+        <button id="history-close">✕</button>
+      </div>
+      <div id="history-cards"></div>
     </div>
   </div>
 
@@ -611,10 +660,13 @@
     let resizing = null
     let moving = null
     let movingArrow = null
+    let resizingArrow = null
     let hoveredArrowId = null
     let hoveredPinId = null
     let hoveredBoxId = null
     let compositeTheme = 'light'
+    let sessionId = null
+    let autoSaveTimer = null
 
     const HANDLE_CURSORS = {
       nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize',
@@ -652,9 +704,10 @@
     const notesList     = document.getElementById('notes-list')
     const zoomControls  = document.getElementById('zoom-controls')
     const zoomLabel     = document.getElementById('zoom-label')
-    const btnBox        = document.getElementById('btn-box')
-    const btnArrow      = document.getElementById('btn-arrow')
-    const colorBtn      = document.getElementById('color-btn')
+    const btnBox         = document.getElementById('btn-box')
+    const btnArrow       = document.getElementById('btn-arrow')
+    const btnDoubleArrow = document.getElementById('btn-double-arrow')
+    const colorBtn       = document.getElementById('color-btn')
     const colorPicker   = document.getElementById('color-picker')
     const fileInput     = document.getElementById('file-input')
     const commentPopup  = document.getElementById('comment-popup')
@@ -704,6 +757,7 @@
         panOffset = { x: 0, y: 0 }
         img = el
         imgSize = { w: el.width, h: el.height }
+        sessionId = 'session-' + Date.now()
         canvas.classList.add('visible')
         document.getElementById('canvas-wrapper').classList.add('visible')
         canvasEmpty.style.display = 'none'
@@ -737,7 +791,7 @@
         ctx.lineWidth = 2
         ctx.globalAlpha = active ? 1 : 0.9
         if (active) { ctx.shadowColor = a.color; ctx.shadowBlur = 3 }
-        drawArrowShape(a.x1 * s, a.y1 * s, a.x2 * s, a.y2 * s)
+        drawArrowShape(a.x1 * s, a.y1 * s, a.x2 * s, a.y2 * s, a.bidirectional)
         ctx.shadowBlur = 0
         ctx.globalAlpha = 1
         ctx.lineWidth = 2
@@ -765,7 +819,7 @@
         const boxSelected = a.id === selectedId && a.box
         const boxHovered = a.id === hoveredBoxId && a.box
         ctx.strokeStyle = a.color
-        ctx.lineWidth = boxHovered ? 2.5 : 2
+        ctx.lineWidth = boxHovered ? 2 : 1.5
         if (boxSelected) { ctx.shadowColor = a.color; ctx.shadowBlur = 8 }
         else if (boxHovered) { ctx.shadowColor = a.color; ctx.shadowBlur = 4 }
         if (a.box) ctx.strokeRect(a.box.x * s, a.box.y * s, a.box.w * s, a.box.h * s)
@@ -778,6 +832,21 @@
         ctx.shadowBlur = 0
       })
 
+      if (selectedArrowId) {
+        const sa = arrows.find(a => a.id === selectedArrowId)
+        if (sa) {
+          [[sa.x1 * s, sa.y1 * s], [sa.x2 * s, sa.y2 * s]].forEach(([hx, hy]) => {
+            ctx.beginPath()
+            ctx.arc(hx, hy, 6, 0, Math.PI * 2)
+            ctx.fillStyle = '#1a1a1a'
+            ctx.fill()
+            ctx.strokeStyle = sa.color
+            ctx.lineWidth = 2
+            ctx.stroke()
+          })
+        }
+      }
+
       if (draft) {
         ctx.strokeStyle = color
         ctx.lineWidth = 2
@@ -786,7 +855,7 @@
           ctx.strokeRect(draft.x1 * s, draft.y1 * s, (draft.x2 - draft.x1) * s, (draft.y2 - draft.y1) * s)
           ctx.setLineDash([])
         } else {
-          drawArrowShape(draft.x1 * s, draft.y1 * s, draft.x2 * s, draft.y2 * s)
+          drawArrowShape(draft.x1 * s, draft.y1 * s, draft.x2 * s, draft.y2 * s, tool === 'double-arrow')
         }
       }
 
@@ -806,8 +875,8 @@
       ctx.textBaseline = 'alphabetic'
     }
 
-    function strokeArrow(cx, x1, y1, x2, y2, lw) {
-      const headLen = Math.max(22, lw * 6)
+    function strokeArrow(cx, x1, y1, x2, y2, lw, bidirectional = false) {
+      const headLen = Math.max(14, lw * 4)
       const headAngle = Math.PI / 5
       const angle = Math.atan2(y2 - y1, x2 - x1)
       cx.lineCap = 'round'
@@ -819,12 +888,19 @@
       cx.lineTo(x2 - headLen * Math.cos(angle - headAngle), y2 - headLen * Math.sin(angle - headAngle))
       cx.moveTo(x2, y2)
       cx.lineTo(x2 - headLen * Math.cos(angle + headAngle), y2 - headLen * Math.sin(angle + headAngle))
+      if (bidirectional) {
+        const ra = Math.atan2(y1 - y2, x1 - x2)
+        cx.moveTo(x1, y1)
+        cx.lineTo(x1 - headLen * Math.cos(ra - headAngle), y1 - headLen * Math.sin(ra - headAngle))
+        cx.moveTo(x1, y1)
+        cx.lineTo(x1 - headLen * Math.cos(ra + headAngle), y1 - headLen * Math.sin(ra + headAngle))
+      }
       cx.stroke()
       cx.lineCap = 'butt'
       cx.lineJoin = 'miter'
     }
 
-    const drawArrowShape = (x1, y1, x2, y2) => strokeArrow(ctx, x1, y1, x2, y2, ctx.lineWidth)
+    const drawArrowShape = (x1, y1, x2, y2, bidir = false) => strokeArrow(ctx, x1, y1, x2, y2, ctx.lineWidth, bidir)
 
     // ─── Notes panel ──────────────────────────────────────────────────────────
     function renderNotes() {
@@ -917,6 +993,25 @@
         return
       }
 
+      if (selectedArrowId) {
+        const selArr = arrows.find(a => a.id === selectedArrowId)
+        if (selArr) {
+          const HRAD = 10 / es()
+          if (Math.hypot(pos.x - selArr.x1, pos.y - selArr.y1) <= HRAD) {
+            pushHistory()
+            resizingArrow = { id: selectedArrowId, endpoint: 'start' }
+            draw()
+            return
+          }
+          if (Math.hypot(pos.x - selArr.x2, pos.y - selArr.y2) <= HRAD) {
+            pushHistory()
+            resizingArrow = { id: selectedArrowId, endpoint: 'end' }
+            draw()
+            return
+          }
+        }
+      }
+
       const arrowHit = arrowAt(pos.x, pos.y)
       if (arrowHit) {
         pushHistory()
@@ -997,6 +1092,17 @@
         draw()
         return
       }
+      if (resizingArrow) {
+        const pos = canvasPos(e)
+        arrows = arrows.map(a => {
+          if (a.id !== resizingArrow.id) return a
+          return resizingArrow.endpoint === 'start'
+            ? { ...a, x1: pos.x, y1: pos.y }
+            : { ...a, x2: pos.x, y2: pos.y }
+        })
+        draw()
+        return
+      }
       if (isDown) {
         const pos = canvasPos(e)
         draft = { ...draft, x2: pos.x, y2: pos.y }
@@ -1057,6 +1163,11 @@
         canvas.style.cursor = 'pointer'
         return
       }
+      if (resizingArrow) {
+        resizingArrow = null
+        saveSession()
+        return
+      }
       if (!isDown) return
       isDown = false
       if (!draft) return
@@ -1066,8 +1177,8 @@
 
       const id = 'shape-' + Date.now()
       pushHistory()
-      if (tool === 'arrow') {
-        arrows = [...arrows, { id, x1: draft.x1, y1: draft.y1, x2: draft.x2, y2: draft.y2, color }]
+      if (tool === 'arrow' || tool === 'double-arrow') {
+        arrows = [...arrows, { id, x1: draft.x1, y1: draft.y1, x2: draft.x2, y2: draft.y2, color, bidirectional: tool === 'double-arrow' }]
       } else {
         const num = seq++
         const box = {
@@ -1210,11 +1321,19 @@
       tool = 'box'
       btnBox.classList.add('active')
       btnArrow.classList.remove('active')
+      btnDoubleArrow.classList.remove('active')
     })
     btnArrow.addEventListener('click', () => {
       tool = 'arrow'
       btnArrow.classList.add('active')
       btnBox.classList.remove('active')
+      btnDoubleArrow.classList.remove('active')
+    })
+    btnDoubleArrow.addEventListener('click', () => {
+      tool = 'double-arrow'
+      btnDoubleArrow.classList.add('active')
+      btnBox.classList.remove('active')
+      btnArrow.classList.remove('active')
     })
 
     function closeColorPicker() {
@@ -1303,6 +1422,41 @@
           color
         }))
       } catch (_) {}
+      scheduleAutoSave()
+    }
+
+    function scheduleAutoSave() {
+      clearTimeout(autoSaveTimer)
+      autoSaveTimer = setTimeout(performAutoSave, 2000)
+    }
+
+    async function performAutoSave() {
+      if (!img || !sessionId) return
+      const thumb = generateThumbnail()
+      await window.api.autoSave({
+        version: 1,
+        sessionId,
+        thumbnail: thumb,
+        imageDataUrl: img.src,
+        imgSize,
+        annotations,
+        arrows,
+        tool,
+        color,
+        savedAt: new Date().toISOString()
+      })
+    }
+
+    function generateThumbnail() {
+      const MAX_W = 300
+      const ratio = Math.min(MAX_W / canvas.width, 1)
+      const tw = Math.round(canvas.width * ratio)
+      const th = Math.round(canvas.height * ratio)
+      const tc = document.createElement('canvas')
+      tc.width = tw
+      tc.height = th
+      tc.getContext('2d').drawImage(canvas, 0, 0, tw, th)
+      return tc.toDataURL('image/jpeg', 0.75)
     }
 
     function restoreSession() {
@@ -1318,6 +1472,7 @@
           scale = maxW / el.width
           img = el
           imgSize = s.imgSize
+          if (!sessionId) sessionId = 'session-' + Date.now()
           annotations = s.annotations || []
           arrows = s.arrows || []
           zoom = s.zoom || 1
@@ -1333,6 +1488,7 @@
             tool = s.tool
             btnBox.classList.toggle('active', tool === 'box')
             btnArrow.classList.toggle('active', tool === 'arrow')
+            btnDoubleArrow.classList.toggle('active', tool === 'double-arrow')
           }
           canvas.classList.add('visible')
           document.getElementById('canvas-wrapper').classList.add('visible')
@@ -1359,6 +1515,9 @@
       selectedArrowId = null
       moving = null
       movingArrow = null
+      resizingArrow = null
+      sessionId = null
+      clearTimeout(autoSaveTimer)
       canvas.classList.remove('visible')
       document.getElementById('canvas-wrapper').classList.remove('visible')
       canvasEmpty.style.display = 'flex'
@@ -1369,12 +1528,11 @@
 
     restoreSession()
 
-    // ─── Theme toggle ─────────────────────────────────────────────────────────
-    document.getElementById('btn-theme').addEventListener('click', () => {
-      compositeTheme = compositeTheme === 'light' ? 'dark' : 'light'
-      const btn = document.getElementById('btn-theme')
-      btn.style.color = compositeTheme === 'dark' ? '#f59e0b' : ''
-      btn.title = compositeTheme === 'dark' ? 'Output: dark' : 'Output: light'
+    // ─── History ──────────────────────────────────────────────────────────────
+    document.getElementById('btn-history').addEventListener('click', showHistory)
+    document.getElementById('history-close').addEventListener('click', closeHistory)
+    document.getElementById('history-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('history-modal')) closeHistory()
     })
 
     // ─── Help modal ───────────────────────────────────────────────────────────
@@ -1386,6 +1544,7 @@
     // ─── Bottom bar ───────────────────────────────────────────────────────────
     document.getElementById('btn-cancel').addEventListener('click', clearSession)
     document.getElementById('btn-copy').addEventListener('click', copy)
+    document.getElementById('btn-save-png').addEventListener('click', savePng)
     document.getElementById('btn-undo').addEventListener('click', undo)
     document.getElementById('btn-redo').addEventListener('click', redo)
     updateUndoRedo()
@@ -1394,6 +1553,101 @@
       if (!img) return
       const dataUrl = await renderComposite()
       window.api.copyToClipboard(dataUrl)
+    }
+
+    async function savePng() {
+      if (!img) return
+      const dataUrl = await renderComposite()
+      window.api.savePng(dataUrl)
+    }
+
+    function loadSession(data) {
+      if (!data || !data.imageDataUrl) return
+      closeHistory()
+      const el = new Image()
+      el.onload = () => {
+        const maxW = window.innerWidth - PANEL_W
+        scale = maxW / el.width
+        zoom = 1
+        seq = 1
+        selectedId = null
+        selectedArrowId = null
+        history = []
+        historyIndex = -1
+        panOffset = { x: 0, y: 0 }
+        img = el
+        imgSize = data.imgSize || { w: el.width, h: el.height }
+        annotations = data.annotations || []
+        arrows = data.arrows || []
+        seq = annotations.length + 1
+        sessionId = data.sessionId || ('session-' + Date.now())
+        if (data.color) {
+          color = data.color
+          colorBtn.style.background = color
+          colorPicker.querySelectorAll('.color-swatch').forEach(sw =>
+            sw.classList.toggle('selected', sw.dataset.color === color)
+          )
+        }
+        if (data.tool) {
+          tool = data.tool
+          btnBox.classList.toggle('active', tool === 'box')
+          btnArrow.classList.toggle('active', tool === 'arrow')
+          btnDoubleArrow.classList.toggle('active', tool === 'double-arrow')
+        }
+        canvas.classList.add('visible')
+        document.getElementById('canvas-wrapper').classList.add('visible')
+        canvasEmpty.style.display = 'none'
+        zoomControls.classList.add('visible')
+        applyPanOffset()
+        draw()
+        renderNotes()
+        renderZoom()
+        pushHistory()
+        saveSession()
+      }
+      el.src = data.imageDataUrl
+    }
+
+    function relDate(isoString) {
+      const diff = Math.floor((Date.now() - new Date(isoString)) / 1000)
+      if (diff < 60) return 'just now'
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago'
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago'
+      if (diff < 86400 * 7) return Math.floor(diff / 86400) + 'd ago'
+      return new Date(isoString).toLocaleDateString()
+    }
+
+    async function showHistory() {
+      const modal = document.getElementById('history-modal')
+      const cards = document.getElementById('history-cards')
+      cards.innerHTML = ''
+      const items = await window.api.getAutosaves()
+      if (!items || items.length === 0) {
+        cards.innerHTML = '<div id="history-empty">No history yet</div>'
+      } else {
+        items.forEach(item => {
+          const card = document.createElement('div')
+          card.className = 'history-card'
+          const thumb = document.createElement('img')
+          thumb.className = 'history-thumb'
+          thumb.src = item.thumbnail || ''
+          const date = document.createElement('div')
+          date.className = 'history-date'
+          date.textContent = relDate(item.savedAt)
+          card.appendChild(thumb)
+          card.appendChild(date)
+          card.addEventListener('click', async () => {
+            const data = await window.api.openAutosave(item.path)
+            if (data) loadSession(data)
+          })
+          cards.appendChild(card)
+        })
+      }
+      modal.classList.add('open')
+    }
+
+    function closeHistory() {
+      document.getElementById('history-modal').classList.remove('open')
     }
 
     // ─── Update banner ────────────────────────────────────────────────────────
@@ -1457,7 +1711,7 @@
         const dataUrl = await window.api.pasteImage()
         if (dataUrl) loadImage(dataUrl)
       }
-      if (e.key === 'Escape') { closeColorPicker(); if (currentPopupId) closePopup(); closeArrowPopup(); helpModal.classList.remove('open') }
+      if (e.key === 'Escape') { closeColorPicker(); if (currentPopupId) closePopup(); closeArrowPopup(); helpModal.classList.remove('open'); closeHistory() }
       if (currentPopupId && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePopup() }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.matches('textarea, input') && !currentPopupId) {
         if (selectedArrowId) {
@@ -1507,6 +1761,7 @@
       const imgH = imgSize.h
       const pinR = 14
       const strokeW = Math.max(2, Math.round(imgW * 0.002))
+      const boxStrokeW = Math.max(1.5, Math.round(imgW * 0.0015))
       const pinFont = 12
 
       const COMP_PANEL = 300
@@ -1568,7 +1823,7 @@
       arrows.forEach(a => {
         cx.strokeStyle = a.color
         cx.lineWidth = strokeW
-        strokeArrow(cx, COMP_PANEL + a.x1 * imgScale, imgOffY + a.y1 * imgScale, COMP_PANEL + a.x2 * imgScale, imgOffY + a.y2 * imgScale, strokeW)
+        strokeArrow(cx, COMP_PANEL + a.x1 * imgScale, imgOffY + a.y1 * imgScale, COMP_PANEL + a.x2 * imgScale, imgOffY + a.y2 * imgScale, strokeW, a.bidirectional)
         if (a.label) {
           const lx = COMP_PANEL + (a.x1 + a.x2) / 2 * imgScale
           const ly = imgOffY + (a.y1 + a.y2) / 2 * imgScale
@@ -1590,7 +1845,7 @@
 
       annotations.forEach(a => {
         cx.strokeStyle = a.color
-        cx.lineWidth = strokeW
+        cx.lineWidth = boxStrokeW
         if (a.box) cx.strokeRect(COMP_PANEL + a.box.x * imgScale, imgOffY + a.box.y * imgScale, a.box.w * imgScale, a.box.h * imgScale)
 
         const px = COMP_PANEL + a.box.x * imgScale

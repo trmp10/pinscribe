@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalS
 const { exec } = require('child_process')
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
+const fs = require('fs')
 
 let win = null
 let tray = null
@@ -125,6 +126,70 @@ ipcMain.handle('paste-image', () => {
   const img = clipboard.readImage()
   if (img.isEmpty()) return null
   return img.toDataURL()
+})
+
+// ─── Save PNG ─────────────────────────────────────────────────────────────────
+
+ipcMain.handle('save-png', async (_e, dataUrl) => {
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    title: 'Save as PNG',
+    defaultPath: 'annotation.png',
+    filters: [{ name: 'PNG Image', extensions: ['png'] }]
+  })
+  if (canceled || !filePath) return false
+  const base64 = dataUrl.replace(/^data:image\/png;base64,/, '')
+  fs.writeFileSync(filePath, Buffer.from(base64, 'base64'))
+  return true
+})
+
+// ─── Auto-save ────────────────────────────────────────────────────────────────
+
+function autosavesDir() {
+  return path.join(app.getPath('userData'), 'autosaves')
+}
+
+function ensureAutosavesDir() {
+  const dir = autosavesDir()
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+}
+
+ipcMain.handle('auto-save', (_e, data) => {
+  try {
+    ensureAutosavesDir()
+    const file = path.join(autosavesDir(), `${data.sessionId}.json`)
+    fs.writeFileSync(file, JSON.stringify(data), 'utf8')
+    // prune to 5 most recent
+    const files = fs.readdirSync(autosavesDir())
+      .filter(f => f.endsWith('.json'))
+      .map(f => ({ name: f, mtime: fs.statSync(path.join(autosavesDir(), f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime)
+    files.slice(5).forEach(f => {
+      try { fs.unlinkSync(path.join(autosavesDir(), f.name)) } catch {}
+    })
+    return true
+  } catch { return false }
+})
+
+ipcMain.handle('get-autosaves', () => {
+  try {
+    ensureAutosavesDir()
+    return fs.readdirSync(autosavesDir())
+      .filter(f => f.endsWith('.json'))
+      .map(f => {
+        try {
+          const raw = fs.readFileSync(path.join(autosavesDir(), f), 'utf8')
+          const d = JSON.parse(raw)
+          return { path: path.join(autosavesDir(), f), thumbnail: d.thumbnail, savedAt: d.savedAt, sessionId: d.sessionId }
+        } catch { return null }
+      })
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt))
+      .slice(0, 5)
+  } catch { return [] }
+})
+
+ipcMain.handle('open-autosave', (_e, filePath) => {
+  try { return JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch { return null }
 })
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────

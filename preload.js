@@ -5,5 +5,9 @@ contextBridge.exposeInMainWorld('api', {
   pasteImage: () => ipcRenderer.invoke('paste-image'),
   hideWindow: () => ipcRenderer.send('hide-window'),
   restartForUpdate: () => ipcRenderer.send('restart-for-update'),
-  onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, data) => cb(data))
+  onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, data) => cb(data)),
+  savePng: (dataUrl) => ipcRenderer.invoke('save-png', dataUrl),
+  autoSave: (data) => ipcRenderer.invoke('auto-save', data),
+  getAutosaves: () => ipcRenderer.invoke('get-autosaves'),
+  openAutosave: (filePath) => ipcRenderer.invoke('open-autosave', filePath),
 })
