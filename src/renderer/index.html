@@ -1,16 +1,1936 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;" />
-    <title>PinScribe</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #1a1a1a; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PinScribe</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #1a1a1a;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      color: #fff;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #titlebar {
+      height: 44px;
+      flex-shrink: 0;
+      border-bottom: 1px solid #2a2a2a;
+      position: relative;
+      -webkit-app-region: drag;
+    }
+
+    #toolbar {
+      position: absolute;
+      top: 0; bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      -webkit-app-region: no-drag;
+    }
+
+    .tool-btn {
+      background: transparent;
+      color: #777;
+      border: none;
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: background 0.1s, color 0.1s;
+    }
+    .tool-btn:hover { background: rgba(255,255,255,0.08); color: #bbb; }
+    .tool-btn.active { background: #3a3a3a; color: #fff; }
+
+    .toolbar-divider { width: 1px; height: 16px; background: #333; margin: 0 2px; }
+
+    #color-btn {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      padding: 0;
+      transition: border-color 0.1s;
+    }
+    #color-btn.open { border-color: #fff; }
+
+    #color-picker {
+      position: fixed;
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 10px;
+      padding: 10px;
+      display: none;
+      gap: 8px;
+      z-index: 1000;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      -webkit-app-region: no-drag;
+    }
+    #color-picker.open { display: flex; }
+
+    .color-swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 0;
+      transition: border-color 0.1s;
+    }
+    .color-swatch.selected { border-color: #fff; }
+
+    #main { flex: 1; display: flex; overflow: hidden; }
+
+    #notes-panel {
+      width: 260px;
+      flex-shrink: 0;
+      border-right: 1px solid #2a2a2a;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 16px;
+      gap: 4px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    #notes-title { font-weight: 700; font-size: 15px; margin-bottom: 12px; }
+
+    .note-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 6px 0;
+      cursor: pointer;
+    }
+
+    .note-pin {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1;
+    }
+
+    .note-text { font-size: 13px; padding-top: 4px; line-height: 1.4; }
+    .note-text.empty { color: #555; }
+    .note-text.filled { color: #ddd; }
+
+    #canvas-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #canvas-area.drop-highlight { outline: 2px solid #e8334a; outline-offset: -2px; }
+
+    #canvas-wrapper {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      line-height: 0;
+    }
+    #canvas-wrapper.visible { display: block; }
+
+    #canvas-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    #canvas-empty-icon { font-size: 36px; opacity: 0.3; }
+    #canvas-empty-label { color: #555; font-size: 14px; transition: color 0.15s; }
+    #canvas-empty-label.highlight { color: #e8334a; }
+
+    #canvas-empty-btns { display: flex; gap: 8px; }
+
+    .empty-btn {
+      background: #2a2a2a;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 20px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .empty-btn.primary { background: #e8334a; }
+
+    #canvas { display: none; cursor: crosshair; }
+    #canvas.visible { display: block; }
+
+    #bottom-bar {
+      height: 56px;
+      flex-shrink: 0;
+      background: #111;
+      border-top: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+      position: relative;
+    }
+
+    #zoom-controls { display: flex; align-items: center; gap: 8px; visibility: hidden; position: absolute; left: 20px; }
+    #zoom-controls.visible { visibility: visible; }
+
+    .zoom-btn {
+      background: #2a2a2a;
+      color: #aaa;
+      border: none;
+      border-radius: 5px;
+      width: 28px;
+      height: 28px;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: inherit;
+    }
+    #zoom-fit { width: auto; padding: 4px 8px; font-size: 11px; margin-left: 4px; }
+    #zoom-label { color: #666; font-size: 12px; min-width: 40px; text-align: center; }
+
+    #action-buttons { display: flex; gap: 10px; }
+
+    .action-btn {
+      background: #2a2a2a;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 7px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      font-family: inherit;
+    }
+    .action-btn.primary { background: #e8334a; }
+
+    .kbd { background: rgba(255,255,255,0.08); border-radius: 3px; padding: 1px 5px; font-size: 11px; margin-left: 4px; }
+    .kbd.primary { background: rgba(255,255,255,0.15); }
+
+    #comment-popup {
+      position: fixed;
+      width: 300px;
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 1000;
+      padding: 14px;
+      display: none;
+    }
+    #comment-popup.open { display: block; }
+
+    #comment-label { color: #aaa; font-size: 12px; margin-bottom: 8px; }
+
+    #comment-textarea {
+      width: 100%;
+      height: 72px;
+      background: #111;
+      border: 1.5px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      padding: 8px;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+    }
+    #comment-textarea:focus { border-color: #888; }
+
+    #popup-colors { display: flex; gap: 8px; margin-top: 10px; }
+    .popup-swatch {
+      width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
+      cursor: pointer; padding: 0; transition: border-color 0.1s;
+    }
+    .popup-swatch.selected { border-color: #fff; }
+
+    #comment-actions { display: flex; justify-content: space-between; margin-top: 10px; }
+
+    #comment-delete {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-family: inherit;
+    }
+    #comment-delete:hover { color: #e8334a; }
+
+    #comment-right { display: flex; gap: 8px; }
+
+    #comment-cancel {
+      background: #333;
+      border: none;
+      color: #ccc;
+      font-size: 13px;
+      border-radius: 6px;
+      padding: 5px 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    #comment-save {
+      background: #e8334a;
+      border: none;
+      color: #fff;
+      font-size: 13px;
+      border-radius: 6px;
+      padding: 5px 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #arrow-popup {
+      position: fixed;
+      width: 240px;
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 1000;
+      padding: 12px;
+      display: none;
+    }
+    #arrow-popup.open { display: block; }
+    #arrow-input {
+      width: 100%;
+      background: #111;
+      border: 1.5px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      padding: 7px 8px;
+      outline: none;
+      font-family: inherit;
+    }
+    #arrow-input:focus { border-color: #888; }
+    #arrow-popup-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
+    #help-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #help-modal.open { display: flex; }
+    #help-box {
+      background: #1e1e1e;
+      border: 1px solid #444;
+      border-radius: 12px;
+      padding: 24px 28px;
+      min-width: 320px;
+      max-width: 400px;
+    }
+    #help-box h3 { color: #fff; font-size: 15px; margin-bottom: 16px; }
+    .help-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #2a2a2a; }
+    .help-row:last-child { border-bottom: none; }
+    .help-label { color: #aaa; font-size: 13px; }
+    .help-kbd { color: #fff; font-size: 12px; background: #333; border-radius: 4px; padding: 2px 7px; }
+    #help-close { margin-top: 16px; width: 100%; background: #333; border: none; color: #ccc; border-radius: 7px; padding: 8px; cursor: pointer; font-family: inherit; font-size: 13px; }
+    #update-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      z-index: 3000; display: none; align-items: center; justify-content: center;
+    }
+    #update-modal.open { display: flex; }
+    #update-card {
+      background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 18px;
+      padding: 28px 24px 20px; width: 268px;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    }
+    #update-icon-wrap { margin-bottom: 4px; line-height: 0; }
+    #update-modal-title { color: #fff; font-size: 17px; font-weight: 600; text-align: center; }
+    #update-modal-sub { color: #888; font-size: 13px; text-align: center; line-height: 1.45; min-height: 18px; }
+    #update-modal-prog { width: 100%; height: 4px; background: #333; border-radius: 2px; overflow: hidden; margin: 6px 0 2px; display: none; }
+    #update-modal-prog-bar { height: 100%; background: #f59e0b; border-radius: 2px; transition: width 0.3s; width: 0%; }
+    #update-modal-restart {
+      width: 100%; background: #f59e0b; color: #000; border: none;
+      border-radius: 9px; padding: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: inherit; margin-top: 8px; display: none;
+    }
+    #update-modal-close {
+      width: 100%; background: #2a2a2a; color: #ccc; border: none;
+      border-radius: 9px; padding: 10px; font-size: 14px;
+      cursor: pointer; font-family: inherit; margin-top: 6px;
+    }
+    #history-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000;
+      display: none; align-items: center; justify-content: center;
+    }
+    #history-modal.open { display: flex; }
+    #history-box {
+      background: #1e1e1e; border: 1px solid #333; border-radius: 14px;
+      padding: 24px 28px; min-width: 400px; max-width: 860px; width: 90vw;
+    }
+    #history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    #history-title { color: #fff; font-size: 15px; font-weight: 600; }
+    #history-close {
+      background: none; border: none; color: #666; font-size: 18px; cursor: pointer;
+      line-height: 1; padding: 2px 6px; border-radius: 4px;
+    }
+    #history-close:hover { color: #ccc; }
+    #history-cards { display: flex; gap: 12px; flex-wrap: wrap; }
+    .history-card {
+      flex: 0 0 auto; width: 148px; cursor: pointer; border-radius: 9px;
+      border: 2px solid transparent; overflow: hidden; transition: border-color 0.15s, transform 0.1s;
+      background: #111;
+    }
+    .history-card:hover { border-color: #e8334a; transform: scale(1.02); }
+    .history-thumb { width: 148px; height: 98px; object-fit: cover; display: block; }
+    .history-date { color: #666; font-size: 11px; padding: 6px 8px; }
+    #history-empty { color: #555; font-size: 13px; text-align: center; padding: 24px 0; }
+  </style>
+</head>
+<body>
+
+  <div id="titlebar">
+    <div id="toolbar">
+      <button id="btn-box" class="tool-btn active" title="Annotation box">
+        <svg width="20" height="20" viewBox="0 0 20 20">
+          <circle cx="10" cy="10" r="9" fill="currentColor"/>
+          <text x="10" y="10" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a" font-size="10" font-weight="bold" font-family="-apple-system,sans-serif">1</text>
+        </svg>
+      </button>
+      <button id="btn-arrow" class="tool-btn" title="Arrow">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M3 13L13 3M13 3H8M13 3V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button id="btn-double-arrow" class="tool-btn" title="Double arrow">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M2 8h12M2 8l3-2.5M2 8l3 2.5M14 8l-3-2.5M14 8l-3 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="toolbar-divider"></div>
+      <div>
+        <button id="color-btn" title="Annotation colour"></button>
+        <div id="color-picker"></div>
+      </div>
+    </div>
+    <div style="position:absolute;top:0;bottom:0;right:16px;display:flex;align-items:center;-webkit-app-region:no-drag">
+      <button id="btn-history" class="tool-btn" title="History">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M7.5 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="update-modal">
+    <div id="update-card">
+      <div id="update-icon-wrap"></div>
+      <div id="update-modal-title">Checking for updates…</div>
+      <div id="update-modal-sub"></div>
+      <div id="update-modal-prog"><div id="update-modal-prog-bar"></div></div>
+      <button id="update-modal-restart">Restart to Update</button>
+      <button id="update-modal-close">Close</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="notes-panel">
+      <div id="notes-title">Notes</div>
+      <div id="notes-list"></div>
+    </div>
+    <div id="canvas-area">
+      <div id="canvas-empty">
+        <div id="canvas-empty-icon">📎</div>
+        <div id="canvas-empty-label">Drop an image or use the buttons below</div>
+        <div id="canvas-empty-btns">
+          <button class="empty-btn primary" id="btn-open">Open image</button>
+          <button class="empty-btn" id="btn-paste">Paste image</button>
+        </div>
+      </div>
+      <div id="canvas-wrapper">
+        <canvas id="canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom-bar">
+    <div id="zoom-controls">
+      <button class="zoom-btn" id="zoom-out">−</button>
+      <span id="zoom-label">100%</span>
+      <button class="zoom-btn" id="zoom-in">+</button>
+      <button class="zoom-btn" id="zoom-fit" title="Fit ⌘0">Fit</button>
+      <div style="width:1px;height:16px;background:#333;margin:0 4px"></div>
+      <button class="zoom-btn" id="btn-undo" title="Undo ⌘Z">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M2 5H8.5C10.4 5 12 6.6 12 8.5S10.4 12 8.5 12H4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M4.5 2.5L2 5l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="zoom-btn" id="btn-redo" title="Redo ⌘⇧Z">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M12 5H5.5C3.6 5 2 6.6 2 8.5S3.6 12 5.5 12H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M9.5 2.5L12 5l-2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+    <div id="action-buttons">
+      <button class="action-btn" id="btn-save-png">Save PNG</button>
+      <button class="action-btn primary" id="btn-copy">Copy <span class="kbd primary">⌘C</span></button>
+    </div>
+    <div style="position:absolute;right:20px;display:flex;align-items:center;gap:8px;">
+      <button class="action-btn" id="btn-cancel">New <span class="kbd">⌘N</span></button>
+      <button class="zoom-btn" id="btn-help" title="Keyboard shortcuts ?">?</button>
+    </div>
+  </div>
+
+  <div id="comment-popup">
+    <div id="comment-label">Note</div>
+    <textarea id="comment-textarea" placeholder="Add a comment..."></textarea>
+    <div id="popup-colors"></div>
+    <div id="comment-actions">
+      <button id="comment-delete">Delete</button>
+      <div id="comment-right">
+        <button id="comment-cancel">Cancel</button>
+        <button id="comment-save">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="arrow-popup">
+    <input id="arrow-input" placeholder="Arrow label..." />
+    <div id="arrow-popup-actions">
+      <button id="arrow-cancel" class="zoom-btn" style="width:auto;padding:4px 10px;font-size:12px">Cancel</button>
+      <button id="arrow-save" style="background:#e8334a;border:none;color:#fff;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit">Done</button>
+    </div>
+  </div>
+
+  <div id="history-modal">
+    <div id="history-box">
+      <div id="history-header">
+        <span id="history-title">History</span>
+        <button id="history-close">✕</button>
+      </div>
+      <div id="history-cards"></div>
+    </div>
+  </div>
+
+  <div id="help-modal">
+    <div id="help-box">
+      <h3>Keyboard shortcuts</h3>
+      <div class="help-row"><span class="help-label">Copy composite</span><span class="help-kbd">⌘C</span></div>
+      <div class="help-row"><span class="help-label">New session</span><span class="help-kbd">⌘N</span></div>
+      <div class="help-row"><span class="help-label">Open image</span><span class="help-kbd">⌘O</span></div>
+      <div class="help-row"><span class="help-label">Paste image</span><span class="help-kbd">⌘V</span></div>
+      <div class="help-row"><span class="help-label">Duplicate annotation</span><span class="help-kbd">⌘D</span></div>
+      <div class="help-row"><span class="help-label">Undo</span><span class="help-kbd">⌘Z</span></div>
+      <div class="help-row"><span class="help-label">Redo</span><span class="help-kbd">⌘⇧Z</span></div>
+      <div class="help-row"><span class="help-label">Delete selected</span><span class="help-kbd">⌫</span></div>
+      <div class="help-row"><span class="help-label">Pan canvas</span><span class="help-kbd">Space + drag</span></div>
+      <div class="help-row"><span class="help-label">Label arrow</span><span class="help-kbd">double-click arrow</span></div>
+      <div class="help-row"><span class="help-label">Close</span><span class="help-kbd">Esc</span></div>
+      <button id="help-close">Close</button>
+    </div>
+  </div>
+
+  <input type="file" id="file-input" accept="image/*" style="display:none">
+
+  <script>
+    // ─── Constants ────────────────────────────────────────────────────────────
+    const PANEL_W = 260
+    const PIN_R = 14
+    const DRAG_THRESHOLD = 8
+    const COLORS = [
+      { label: 'Red',    value: '#e8334a' },
+      { label: 'Blue',   value: '#3b82f6' },
+      { label: 'Green',  value: '#22c55e' },
+      { label: 'Amber',  value: '#f59e0b' },
+      { label: 'Purple', value: '#a855f7' },
+    ]
+
+    // ─── State ────────────────────────────────────────────────────────────────
+    let img = null
+    let imgSize = { w: 0, h: 0 }
+    let scale = 1
+    let zoom = 1
+    let tool = 'box'
+    let color = COLORS[0].value
+    let annotations = []
+    let arrows = []
+    let draft = null
+    let isDown = false
+    let seq = 1
+    let history = []
+    let historyIndex = -1
+
+    function pushHistory() {
+      history = history.slice(0, historyIndex + 1)
+      history.push({ annotations: JSON.parse(JSON.stringify(annotations)), arrows: JSON.parse(JSON.stringify(arrows)), seq })
+      historyIndex = history.length - 1
+      updateUndoRedo()
+    }
+
+    function undo() {
+      if (historyIndex <= 0) return
+      historyIndex--
+      const s = history[historyIndex]
+      annotations = JSON.parse(JSON.stringify(s.annotations))
+      arrows = JSON.parse(JSON.stringify(s.arrows))
+      seq = s.seq
+      selectedId = null
+      draw(); renderNotes(); saveSession(); updateUndoRedo()
+    }
+
+    function redo() {
+      if (historyIndex >= history.length - 1) return
+      historyIndex++
+      const s = history[historyIndex]
+      annotations = JSON.parse(JSON.stringify(s.annotations))
+      arrows = JSON.parse(JSON.stringify(s.arrows))
+      seq = s.seq
+      selectedId = null
+      draw(); renderNotes(); saveSession(); updateUndoRedo()
+    }
+
+    function updateUndoRedo() {
+      const undoBtn = document.getElementById('btn-undo')
+      const redoBtn = document.getElementById('btn-redo')
+      if (undoBtn) undoBtn.style.opacity = historyIndex > 0 ? '1' : '0.3'
+      if (redoBtn) redoBtn.style.opacity = historyIndex < history.length - 1 ? '1' : '0.3'
+    }
+
+    function centerCanvas() {
+      requestAnimationFrame(() => {
+        canvasArea.scrollLeft = (canvasArea.scrollWidth - canvasArea.clientWidth) / 2
+        canvasArea.scrollTop  = (canvasArea.scrollHeight - canvasArea.clientHeight) / 2
+      })
+    }
+
+    let spaceHeld = false
+    let isPanning = false
+    let panStart = { mouseX: 0, mouseY: 0, offsetX: 0, offsetY: 0 }
+    let panOffset = { x: 0, y: 0 }
+
+    function applyPanOffset() {
+      const wrapper = document.getElementById('canvas-wrapper')
+      if (wrapper) wrapper.style.transform = `translate(calc(-50% + ${panOffset.x}px), calc(-50% + ${panOffset.y}px))`
+    }
+
+    function zoomAt(newZoom, clientX, clientY) {
+      const oldZoom = zoom
+      zoom = Math.min(Math.max(newZoom, 0.1), 5)
+      if (img && clientX != null) {
+        const ratio = zoom / oldZoom
+        const areaRect = canvasArea.getBoundingClientRect()
+        const mx = clientX - areaRect.left - areaRect.width / 2
+        const my = clientY - areaRect.top - areaRect.height / 2
+        panOffset.x += (mx - panOffset.x) * (1 - ratio)
+        panOffset.y += (my - panOffset.y) * (1 - ratio)
+        applyPanOffset()
+      }
+      draw(); renderZoom(); saveSession()
+    }
+    let selectedId = null
+    let selectedArrowId = null
+    let resizing = null
+    let moving = null
+    let movingArrow = null
+    let resizingArrow = null
+    let hoveredArrowId = null
+    let hoveredPinId = null
+    let hoveredBoxId = null
+    let sessionId = null
+    let autoSaveTimer = null
+
+    const HANDLE_CURSORS = {
+      nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize',
+      w: 'w-resize',                  e: 'e-resize',
+      sw: 'sw-resize', s: 's-resize', se: 'se-resize'
+    }
+
+    function updateCursor() {
+      canvas.style.cursor = spaceHeld ? (isPanning ? 'grabbing' : 'grab') : 'crosshair'
+    }
+
+    function boxBorderAt(x, y) {
+      const EDGE_R   = 7  / es()
+      const CORNER_R = 12 / es()
+      for (const a of annotations) {
+        if (!a.box) continue
+        const { x: bx, y: by, w: bw, h: bh } = a.box
+        if (Math.hypot(x - (bx+bw), y - (by+bh)) <= CORNER_R)         return { id: a.id, handle: 'se' }
+        if (Math.abs(y - by)      <= EDGE_R && x >= bx && x <= bx+bw) return { id: a.id, handle: 'n' }
+        if (Math.abs(y - (by+bh)) <= EDGE_R && x >= bx && x <= bx+bw) return { id: a.id, handle: 's' }
+        if (Math.abs(x - bx)      <= EDGE_R && y >= by && y <= by+bh) return { id: a.id, handle: 'w' }
+        if (Math.abs(x - (bx+bw)) <= EDGE_R && y >= by && y <= by+bh) return { id: a.id, handle: 'e' }
+      }
+      return null
+    }
+
+    const es = () => scale * zoom
+
+    // ─── DOM refs ─────────────────────────────────────────────────────────────
+    const canvas        = document.getElementById('canvas')
+    const ctx           = canvas.getContext('2d')
+    const canvasArea    = document.getElementById('canvas-area')
+    const canvasEmpty   = document.getElementById('canvas-empty')
+    const emptyLabel    = document.getElementById('canvas-empty-label')
+    const notesList     = document.getElementById('notes-list')
+    const zoomControls  = document.getElementById('zoom-controls')
+    const zoomLabel     = document.getElementById('zoom-label')
+    const btnBox         = document.getElementById('btn-box')
+    const btnArrow       = document.getElementById('btn-arrow')
+    const btnDoubleArrow = document.getElementById('btn-double-arrow')
+    const colorBtn       = document.getElementById('color-btn')
+    const colorPicker   = document.getElementById('color-picker')
+    const fileInput     = document.getElementById('file-input')
+    const commentPopup  = document.getElementById('comment-popup')
+    const commentTA     = document.getElementById('comment-textarea')
+
+    // ─── Color picker setup ───────────────────────────────────────────────────
+    document.body.appendChild(colorPicker) // move out of toolbar so position:fixed works correctly
+    colorBtn.style.background = color
+    COLORS.forEach(c => {
+      const btn = document.createElement('button')
+      btn.className = 'color-swatch' + (c.value === color ? ' selected' : '')
+      btn.style.background = c.value
+      btn.dataset.color = c.value
+      btn.title = c.label
+      btn.addEventListener('click', () => {
+        color = c.value
+        colorBtn.style.background = color
+        colorPicker.querySelectorAll('.color-swatch').forEach(s =>
+          s.classList.toggle('selected', s.dataset.color === color)
+        )
+        if (selectedArrowId) {
+          pushHistory()
+          arrows = arrows.map(a => a.id === selectedArrowId ? { ...a, color: c.value } : a)
+          draw()
+          saveSession()
+        }
+        closeColorPicker()
+      })
+      colorPicker.appendChild(btn)
+    })
+
+    // ─── Image loading ────────────────────────────────────────────────────────
+    function loadImage(dataUrl) {
+      const el = new Image()
+      el.onload = () => {
+        const maxW = window.innerWidth - PANEL_W
+        const maxH = window.innerHeight - 44 - 56
+        scale = maxW / el.width
+        zoom = 1
+        seq = 1
+        annotations = []
+        arrows = []
+        selectedId = null
+        selectedArrowId = null
+        history = []
+        historyIndex = -1
+        panOffset = { x: 0, y: 0 }
+        img = el
+        imgSize = { w: el.width, h: el.height }
+        sessionId = 'session-' + Date.now()
+        canvas.classList.add('visible')
+        document.getElementById('canvas-wrapper').classList.add('visible')
+        canvasEmpty.style.display = 'none'
+        zoomControls.classList.add('visible')
+        applyPanOffset()
+        draw()
+        renderNotes()
+        renderZoom()
+        saveSession()
+      }
+      el.src = dataUrl
+    }
+
+    function readFile(file) {
+      const reader = new FileReader()
+      reader.onload = () => loadImage(reader.result)
+      reader.readAsDataURL(file)
+    }
+
+    // ─── Canvas drawing ───────────────────────────────────────────────────────
+    function draw() {
+      if (!img) return
+      const s = es()
+      canvas.width  = imgSize.w * s
+      canvas.height = imgSize.h * s
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+      arrows.forEach(a => {
+        const active = a.id === selectedArrowId || a.id === hoveredArrowId
+        ctx.strokeStyle = a.color
+        ctx.lineWidth = Math.max(1, 2 * s)
+        ctx.globalAlpha = active ? 1 : 0.9
+        if (active) { ctx.shadowColor = a.color; ctx.shadowBlur = 3 }
+        drawArrowShape(a.x1 * s, a.y1 * s, a.x2 * s, a.y2 * s, a.bidirectional)
+        ctx.shadowBlur = 0
+        ctx.globalAlpha = 1
+        ctx.lineWidth = Math.max(1, 2 * s)
+        if (a.label) {
+          const lx = (a.x1 + a.x2) / 2 * s
+          const ly = (a.y1 + a.y2) / 2 * s
+          ctx.font = '12px -apple-system, sans-serif'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          const tw = ctx.measureText(a.label).width
+          const ph = 18, pw = tw + 12, pr = 5
+          const px = lx - pw / 2, py = ly - ph / 2
+          ctx.fillStyle = a.color
+          ctx.beginPath()
+          ctx.roundRect(px, py, pw, ph, pr)
+          ctx.fill()
+          ctx.fillStyle = '#fff'
+          ctx.fillText(a.label, lx, ly)
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'alphabetic'
+        }
+      })
+
+      annotations.forEach(a => {
+        const boxSelected = a.id === selectedId && a.box
+        const boxHovered = a.id === hoveredBoxId && a.box
+        ctx.strokeStyle = a.color
+        ctx.lineWidth = boxHovered ? 2 : 1.5
+        if (boxSelected) { ctx.shadowColor = a.color; ctx.shadowBlur = 8 }
+        else if (boxHovered) { ctx.shadowColor = a.color; ctx.shadowBlur = 4 }
+        if (a.box) ctx.strokeRect(a.box.x * s, a.box.y * s, a.box.w * s, a.box.h * s)
+        ctx.shadowBlur = 0
+        ctx.lineWidth = 2
+        const px = a.box ? a.box.x * s : a.point?.x * s ?? 0
+        const py = a.box ? a.box.y * s : a.point?.y * s ?? 0
+        if (a.id === hoveredPinId) { ctx.shadowColor = a.color; ctx.shadowBlur = 6 }
+        drawPin(px, py, a.num, a.color)
+        ctx.shadowBlur = 0
+      })
+
+      if (selectedArrowId) {
+        const sa = arrows.find(a => a.id === selectedArrowId)
+        if (sa) {
+          [[sa.x1 * s, sa.y1 * s], [sa.x2 * s, sa.y2 * s]].forEach(([hx, hy]) => {
+            ctx.beginPath()
+            ctx.arc(hx, hy, 6, 0, Math.PI * 2)
+            ctx.fillStyle = '#1a1a1a'
+            ctx.fill()
+            ctx.strokeStyle = sa.color
+            ctx.lineWidth = 2
+            ctx.stroke()
+          })
+        }
+      }
+
+      if (draft) {
+        ctx.strokeStyle = color
+        if (tool === 'box') {
+          ctx.lineWidth = 2
+          ctx.setLineDash([6, 3])
+          ctx.strokeRect(draft.x1 * s, draft.y1 * s, (draft.x2 - draft.x1) * s, (draft.y2 - draft.y1) * s)
+          ctx.setLineDash([])
+        } else {
+          ctx.lineWidth = Math.max(1, 2 * s)
+          drawArrowShape(draft.x1 * s, draft.y1 * s, draft.x2 * s, draft.y2 * s, tool === 'double-arrow')
+        }
+      }
+
+    }
+
+    function drawPin(x, y, num, c) {
+      ctx.beginPath()
+      ctx.arc(x, y, PIN_R, 0, Math.PI * 2)
+      ctx.fillStyle = c
+      ctx.fill()
+      ctx.fillStyle = '#fff'
+      ctx.font = 'bold 13px -apple-system, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(String(num), x, y + 1)
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
+    }
+
+    function strokeArrow(cx, x1, y1, x2, y2, lw, bidirectional = false) {
+      const headLen = Math.max(6, lw * 5)
+      const headAngle = Math.PI / 5
+      const angle = Math.atan2(y2 - y1, x2 - x1)
+      cx.lineCap = 'round'
+      cx.lineJoin = 'round'
+      cx.lineWidth = Math.max(1, lw)
+      cx.beginPath()
+      cx.moveTo(x1, y1)
+      cx.lineTo(x2, y2)
+      cx.lineTo(x2 - headLen * Math.cos(angle - headAngle), y2 - headLen * Math.sin(angle - headAngle))
+      cx.moveTo(x2, y2)
+      cx.lineTo(x2 - headLen * Math.cos(angle + headAngle), y2 - headLen * Math.sin(angle + headAngle))
+      if (bidirectional) {
+        const ra = Math.atan2(y1 - y2, x1 - x2)
+        cx.moveTo(x1, y1)
+        cx.lineTo(x1 - headLen * Math.cos(ra - headAngle), y1 - headLen * Math.sin(ra - headAngle))
+        cx.moveTo(x1, y1)
+        cx.lineTo(x1 - headLen * Math.cos(ra + headAngle), y1 - headLen * Math.sin(ra + headAngle))
+      }
+      cx.stroke()
+      cx.lineCap = 'butt'
+      cx.lineJoin = 'miter'
+    }
+
+    const drawArrowShape = (x1, y1, x2, y2, bidir = false) => strokeArrow(ctx, x1, y1, x2, y2, ctx.lineWidth, bidir)
+
+    // ─── Notes panel ──────────────────────────────────────────────────────────
+    function renderNotes() {
+      notesList.innerHTML = ''
+      if (annotations.length === 0) {
+        notesList.innerHTML = '<div style="color:#444;font-size:13px">Annotations will appear here</div>'
+        return
+      }
+      annotations.forEach(a => {
+        const item = document.createElement('div')
+        item.className = 'note-item'
+        item.addEventListener('click', () => { selectedId = a.id; openPopup(a.id) })
+
+        const pin = document.createElement('div')
+        pin.className = 'note-pin'
+        pin.style.background = a.color
+        pin.textContent = a.num
+
+        const text = document.createElement('div')
+        text.className = 'note-text ' + (a.comment ? 'filled' : 'empty')
+        text.textContent = a.comment || 'Add note...'
+
+        item.appendChild(pin)
+        item.appendChild(text)
+        notesList.appendChild(item)
+      })
+    }
+
+    function renderZoom() {
+      zoomLabel.textContent = Math.round(es() * 100) + '%'
+    }
+
+    // ─── Mouse interaction ────────────────────────────────────────────────────
+    function canvasPos(e) {
+      const r = canvas.getBoundingClientRect()
+      return { x: (e.clientX - r.left) / es(), y: (e.clientY - r.top) / es() }
+    }
+
+    function annotationAt(x, y) {
+      return annotations.find(a => {
+        const px = a.box ? a.box.x : a.point.x
+        const py = a.box ? a.box.y : a.point.y
+        return Math.hypot(px - x, py - y) <= PIN_R / es()
+      })
+    }
+
+    function arrowAt(x, y) {
+      const threshold = 12 / es()
+      return arrows.find(a => {
+        const dx = a.x2 - a.x1, dy = a.y2 - a.y1
+        const lenSq = dx * dx + dy * dy
+        if (lenSq === 0) return Math.hypot(x - a.x1, y - a.y1) <= threshold
+        const t = Math.max(0, Math.min(1, ((x - a.x1) * dx + (y - a.y1) * dy) / lenSq))
+        return Math.hypot(x - (a.x1 + t * dx), y - (a.y1 + t * dy)) <= threshold
+      })
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      if (spaceHeld) {
+        isPanning = true
+        panStart = { mouseX: e.clientX, mouseY: e.clientY, offsetX: panOffset.x, offsetY: panOffset.y }
+        updateCursor()
+        return
+      }
+      closeColorPicker()
+      const pos = canvasPos(e)
+
+      const hit = annotationAt(pos.x, pos.y)
+      if (hit) {
+        if (currentPopupId === hit.id) { closePopup(); return }
+        if (currentPopupId) closePopup()
+        pushHistory()
+        selectedId = hit.id
+        selectedArrowId = null
+        moving = { annotationId: hit.id, startMouse: pos, startBox: { ...hit.box }, dragged: false, fromPin: true }
+        draw()
+        return
+      }
+
+      if (currentPopupId) { closePopup(); return }
+
+      const borderHit = boxBorderAt(pos.x, pos.y)
+      if (borderHit) {
+        const ann = annotations.find(a => a.id === borderHit.id)
+        pushHistory()
+        selectedId = borderHit.id
+        selectedArrowId = null
+        resizing = { annotationId: borderHit.id, handle: borderHit.handle, startMouse: pos, startBox: { ...ann.box } }
+        draw()
+        return
+      }
+
+      if (selectedArrowId) {
+        const selArr = arrows.find(a => a.id === selectedArrowId)
+        if (selArr) {
+          const HRAD = 10 / es()
+          if (Math.hypot(pos.x - selArr.x1, pos.y - selArr.y1) <= HRAD) {
+            pushHistory()
+            resizingArrow = { id: selectedArrowId, endpoint: 'start' }
+            draw()
+            return
+          }
+          if (Math.hypot(pos.x - selArr.x2, pos.y - selArr.y2) <= HRAD) {
+            pushHistory()
+            resizingArrow = { id: selectedArrowId, endpoint: 'end' }
+            draw()
+            return
+          }
+        }
+      }
+
+      const arrowHit = arrowAt(pos.x, pos.y)
+      if (arrowHit) {
+        pushHistory()
+        selectedArrowId = arrowHit.id
+        selectedId = null
+        movingArrow = { id: arrowHit.id, startMouse: pos, start: { x1: arrowHit.x1, y1: arrowHit.y1, x2: arrowHit.x2, y2: arrowHit.y2 }, dragged: false }
+        draw()
+        return
+      }
+
+      const insideBox = annotations.find(a => a.box &&
+        pos.x >= a.box.x && pos.x <= a.box.x + a.box.w &&
+        pos.y >= a.box.y && pos.y <= a.box.y + a.box.h)
+      if (insideBox) {
+        pushHistory()
+        selectedId = insideBox.id
+        selectedArrowId = null
+        moving = { annotationId: insideBox.id, startMouse: pos, startBox: { ...insideBox.box }, dragged: false, fromPin: false }
+        draw()
+        return
+      }
+
+      selectedId = null
+      selectedArrowId = null
+      isDown = true
+      draft = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y }
+      draw()
+    })
+
+    canvas.addEventListener('mousemove', e => {
+      if (isPanning) {
+        panOffset.x = panStart.offsetX + (e.clientX - panStart.mouseX)
+        panOffset.y = panStart.offsetY + (e.clientY - panStart.mouseY)
+        applyPanOffset()
+        return
+      }
+      if (resizing) {
+        const pos = canvasPos(e)
+        const { annotationId, handle, startMouse, startBox } = resizing
+        const dx = pos.x - startMouse.x
+        const dy = pos.y - startMouse.y
+        const MIN = 20 / es()
+        let { x, y, w, h } = startBox
+        if (handle.includes('e')) w = Math.max(MIN, startBox.w + dx)
+        if (handle.includes('s')) h = Math.max(MIN, startBox.h + dy)
+        if (handle.includes('w')) { x = startBox.x + dx; w = Math.max(MIN, startBox.w - dx) }
+        if (handle.includes('n')) { y = startBox.y + dy; h = Math.max(MIN, startBox.h - dy) }
+        annotations = annotations.map(a => a.id === annotationId ? { ...a, box: { x, y, w, h } } : a)
+        draw()
+        return
+      }
+      if (moving) {
+        const pos = canvasPos(e)
+        const dx = pos.x - moving.startMouse.x
+        const dy = pos.y - moving.startMouse.y
+        if (!moving.dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD / es()) return
+        moving.dragged = true
+        canvas.style.cursor = 'grabbing'
+        if (moving.startBox) {
+          annotations = annotations.map(a => a.id === moving.annotationId
+            ? { ...a, box: { ...moving.startBox, x: moving.startBox.x + dx, y: moving.startBox.y + dy } }
+            : a)
+        }
+        draw()
+        return
+      }
+      if (movingArrow) {
+        const pos = canvasPos(e)
+        const dx = pos.x - movingArrow.startMouse.x
+        const dy = pos.y - movingArrow.startMouse.y
+        if (!movingArrow.dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD / es()) return
+        movingArrow.dragged = true
+        canvas.style.cursor = 'grabbing'
+        const { start } = movingArrow
+        arrows = arrows.map(a => a.id === movingArrow.id
+          ? { ...a, x1: start.x1 + dx, y1: start.y1 + dy, x2: start.x2 + dx, y2: start.y2 + dy }
+          : a)
+        draw()
+        return
+      }
+      if (resizingArrow) {
+        const pos = canvasPos(e)
+        arrows = arrows.map(a => {
+          if (a.id !== resizingArrow.id) return a
+          return resizingArrow.endpoint === 'start'
+            ? { ...a, x1: pos.x, y1: pos.y }
+            : { ...a, x2: pos.x, y2: pos.y }
+        })
+        draw()
+        return
+      }
+      if (isDown) {
+        const pos = canvasPos(e)
+        draft = { ...draft, x2: pos.x, y2: pos.y }
+        draw()
+        return
+      }
+      if (!spaceHeld) {
+        const pos = canvasPos(e)
+        const border = boxBorderAt(pos.x, pos.y)
+        const arrowHover = arrowAt(pos.x, pos.y)
+        const newHoveredArrow = arrowHover ? arrowHover.id : null
+        if (newHoveredArrow !== hoveredArrowId) { hoveredArrowId = newHoveredArrow; draw() }
+
+        const pinHover = annotationAt(pos.x, pos.y)
+        const newHoveredPin = pinHover ? pinHover.id : null
+        if (newHoveredPin !== hoveredPinId) { hoveredPinId = newHoveredPin; draw() }
+
+        const insideBox = annotations.find(a => a.box &&
+          pos.x >= a.box.x && pos.x <= a.box.x + a.box.w &&
+          pos.y >= a.box.y && pos.y <= a.box.y + a.box.h)
+        const newHoveredBox = (insideBox || border) ? (insideBox || annotations.find(a => a.id === border?.id))?.id ?? null : null
+        if (newHoveredBox !== hoveredBoxId) { hoveredBoxId = newHoveredBox; draw() }
+
+        if (pinHover || arrowHover) {
+          canvas.style.cursor = 'pointer'
+        } else if (border) {
+          canvas.style.cursor = HANDLE_CURSORS[border.handle]
+        } else if (insideBox) {
+          canvas.style.cursor = 'pointer'
+        } else {
+          canvas.style.cursor = 'crosshair'
+        }
+      }
+    })
+
+    canvas.addEventListener('mouseup', e => {
+      if (isPanning) {
+        isPanning = false
+        updateCursor()
+        return
+      }
+      if (resizing) {
+        resizing = null
+        saveSession()
+        return
+      }
+      if (moving) {
+        if (moving.dragged) saveSession()
+        else if (moving.fromPin !== false) openPopup(moving.annotationId)
+        // fromPin === false means inside-box click with no drag — just keep selected
+        moving = null
+        canvas.style.cursor = 'pointer'
+        return
+      }
+      if (movingArrow) {
+        if (movingArrow.dragged) saveSession()
+        movingArrow = null
+        canvas.style.cursor = 'pointer'
+        return
+      }
+      if (resizingArrow) {
+        resizingArrow = null
+        saveSession()
+        return
+      }
+      if (!isDown) return
+      isDown = false
+      if (!draft) return
+      const dx = Math.abs(draft.x2 - draft.x1)
+      const dy = Math.abs(draft.y2 - draft.y1)
+      if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) { draft = null; draw(); return }
+
+      const id = 'shape-' + Date.now()
+      pushHistory()
+      if (tool === 'arrow' || tool === 'double-arrow') {
+        arrows = [...arrows, { id, x1: draft.x1, y1: draft.y1, x2: draft.x2, y2: draft.y2, color, bidirectional: tool === 'double-arrow' }]
+      } else {
+        const num = seq++
+        const box = {
+          x: Math.min(draft.x1, draft.x2), y: Math.min(draft.y1, draft.y2),
+          w: Math.abs(draft.x2 - draft.x1),  h: Math.abs(draft.y2 - draft.y1)
+        }
+        annotations = [...annotations, { id, num, comment: '', color, box }]
+        selectedId = id
+        openPopup(id)
+      }
+      draft = null
+      draw()
+      renderNotes()
+      saveSession()
+    })
+
+    // ─── Comment popup ────────────────────────────────────────────────────────
+    let currentPopupId = null
+
+    function openPopup(id) {
+      const ann = annotations.find(a => a.id === id)
+      if (!ann) return
+      currentPopupId = id
+
+      const r = canvas.getBoundingClientRect()
+      const x = r.left + (ann.box.x + ann.box.w) * es()
+      const y = r.top  + (ann.box.y + ann.box.h) * es()
+      const popupW = 300, popupH = 210
+      commentPopup.style.left = Math.min(Math.max(x, 10), window.innerWidth  - popupW - 10) + 'px'
+      commentPopup.style.top  = Math.min(Math.max(y, 10), window.innerHeight - popupH - 10) + 'px'
+
+      commentTA.value = ann.comment || ''
+      setTimeout(() => { commentTA.setSelectionRange(commentTA.value.length, commentTA.value.length) }, 10)
+
+      // Build color swatches
+      const popupColors = document.getElementById('popup-colors')
+      popupColors.innerHTML = ''
+      COLORS.forEach(c => {
+        const btn = document.createElement('button')
+        btn.className = 'popup-swatch' + (c.value === ann.color ? ' selected' : '')
+        btn.style.background = c.value
+        btn.dataset.color = c.value
+        btn.addEventListener('click', () => {
+          annotations = annotations.map(a => a.id === id ? { ...a, color: c.value } : a)
+          popupColors.querySelectorAll('.popup-swatch').forEach(s =>
+            s.classList.toggle('selected', s.dataset.color === c.value)
+          )
+          draw()
+          renderNotes()
+          saveSession()
+        })
+        popupColors.appendChild(btn)
+      })
+
+      commentPopup.classList.add('open')
+      setTimeout(() => commentTA.focus(), 0)
+    }
+
+    function closePopup() {
+      commentPopup.classList.remove('open')
+      currentPopupId = null
+    }
+
+    function savePopup() {
+      if (!currentPopupId) return
+      const id = currentPopupId
+      pushHistory()
+      annotations = annotations.map(a => a.id === id ? { ...a, comment: commentTA.value } : a)
+      closePopup()
+      renderNotes()
+      saveSession()
+    }
+
+    function renumber() {
+      annotations = annotations.map((a, i) => ({ ...a, num: i + 1 }))
+      seq = annotations.length + 1
+    }
+
+    function deletePopup() {
+      if (!currentPopupId) return
+      const id = currentPopupId
+      pushHistory()
+      if (selectedId === id) selectedId = null
+      annotations = annotations.filter(a => a.id !== id)
+      renumber()
+      closePopup()
+      draw()
+      renderNotes()
+      saveSession()
+    }
+
+    commentPopup.addEventListener('mousedown', e => e.stopPropagation())
+
+    // ─── Arrow label popup ────────────────────────────────────────────────────
+    let arrowPopupId = null
+    const arrowPopup  = document.getElementById('arrow-popup')
+    const arrowInput  = document.getElementById('arrow-input')
+
+    function openArrowPopup(id) {
+      const a = arrows.find(x => x.id === id)
+      if (!a) return
+      arrowPopupId = id
+      const rect = canvas.getBoundingClientRect()
+      const mx = rect.left + (a.x1 + a.x2) / 2 * es()
+      const my = rect.top  + (a.y1 + a.y2) / 2 * es()
+      arrowPopup.style.left = Math.min(Math.max(mx - 120, 10), window.innerWidth - 250) + 'px'
+      arrowPopup.style.top  = Math.min(my - 60, window.innerHeight - 80) + 'px'
+      arrowInput.value = a.label || ''
+      arrowPopup.classList.add('open')
+      setTimeout(() => arrowInput.focus(), 0)
+    }
+
+    function closeArrowPopup() { arrowPopup.classList.remove('open'); arrowPopupId = null }
+    function saveArrowPopup() {
+      if (!arrowPopupId) return
+      pushHistory()
+      arrows = arrows.map(a => a.id === arrowPopupId ? { ...a, label: arrowInput.value } : a)
+      closeArrowPopup(); draw(); saveSession()
+    }
+
+    arrowPopup.addEventListener('mousedown', e => e.stopPropagation())
+    document.getElementById('arrow-save').addEventListener('click', saveArrowPopup)
+    document.getElementById('arrow-cancel').addEventListener('click', closeArrowPopup)
+    arrowInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); saveArrowPopup() }
+      if (e.key === 'Escape') closeArrowPopup()
+    })
+
+    canvas.addEventListener('dblclick', e => {
+      const pos = canvasPos(e)
+      const hit = arrowAt(pos.x, pos.y)
+      if (hit) openArrowPopup(hit.id)
+    })
+    document.getElementById('comment-save').addEventListener('click', savePopup)
+    document.getElementById('comment-cancel').addEventListener('click', closePopup)
+    document.getElementById('comment-delete').addEventListener('click', deletePopup)
+
+    // ─── Toolbar ──────────────────────────────────────────────────────────────
+    btnBox.addEventListener('click', () => {
+      tool = 'box'
+      btnBox.classList.add('active')
+      btnArrow.classList.remove('active')
+      btnDoubleArrow.classList.remove('active')
+    })
+    btnArrow.addEventListener('click', () => {
+      tool = 'arrow'
+      btnArrow.classList.add('active')
+      btnBox.classList.remove('active')
+      btnDoubleArrow.classList.remove('active')
+    })
+    btnDoubleArrow.addEventListener('click', () => {
+      tool = 'double-arrow'
+      btnDoubleArrow.classList.add('active')
+      btnBox.classList.remove('active')
+      btnArrow.classList.remove('active')
+    })
+
+    function closeColorPicker() {
+      colorBtn.classList.remove('open')
+      colorPicker.classList.remove('open')
+    }
+
+    colorBtn.addEventListener('click', e => {
+      e.stopPropagation()
+      const open = colorPicker.classList.toggle('open')
+      colorBtn.classList.toggle('open', open)
+      if (open) {
+        const r = colorBtn.getBoundingClientRect()
+        colorPicker.style.top  = (r.bottom + 6) + 'px'
+        colorPicker.style.left = (r.left + r.width / 2) + 'px'
+        colorPicker.style.transform = 'translateX(-50%)'
+      }
+    })
+
+    document.addEventListener('click', closeColorPicker)
+
+    // ─── Drag & drop ──────────────────────────────────────────────────────────
+    canvasArea.addEventListener('dragover', e => {
+      e.preventDefault()
+      canvasArea.classList.add('drop-highlight')
+      emptyLabel.classList.add('highlight')
+      emptyLabel.textContent = 'Drop to open'
+    })
+
+    canvasArea.addEventListener('dragleave', () => {
+      canvasArea.classList.remove('drop-highlight')
+      emptyLabel.classList.remove('highlight')
+      emptyLabel.textContent = 'Drop an image or use the buttons below'
+    })
+
+    canvasArea.addEventListener('drop', e => {
+      e.preventDefault()
+      canvasArea.classList.remove('drop-highlight')
+      emptyLabel.classList.remove('highlight')
+      emptyLabel.textContent = 'Drop an image or use the buttons below'
+      const file = e.dataTransfer.files[0]
+      if (file && file.type.startsWith('image/')) readFile(file)
+    })
+
+    // ─── Open & paste ──────────────────────────────────────────────────────────
+    document.getElementById('btn-open').addEventListener('click', () => fileInput.click())
+    fileInput.addEventListener('change', e => {
+      const f = e.target.files[0]
+      if (f) readFile(f)
+      e.target.value = ''
+    })
+
+    document.getElementById('btn-paste').addEventListener('click', async () => {
+      const dataUrl = await window.api.pasteImage()
+      if (dataUrl) loadImage(dataUrl)
+    })
+
+    // ─── Zoom ─────────────────────────────────────────────────────────────────
+    document.getElementById('zoom-in').addEventListener('click', () => { if (img) zoomAt(zoom * 1.1) })
+    document.getElementById('zoom-out').addEventListener('click', () => { if (img) zoomAt(zoom * 0.9) })
+    document.getElementById('zoom-fit').addEventListener('click', () => {
+      if (!img) return
+      zoom = 1
+      panOffset = { x: 0, y: 0 }
+      applyPanOffset()
+      draw(); renderZoom(); saveSession()
+    })
+
+    canvasArea.addEventListener('wheel', e => {
+      if (!img) return
+      e.preventDefault()
+      zoomAt(zoom * (e.deltaY < 0 ? 1.1 : 0.9), e.clientX, e.clientY)
+    }, { passive: false })
+
+    // ─── Session persistence ──────────────────────────────────────────────────
+    function saveSession() {
+      if (!img) return
+      try {
+        localStorage.setItem('pinscribe-session', JSON.stringify({
+          imgSrc: img.src,
+          imgSize,
+          annotations,
+          arrows,
+          zoom,
+          tool,
+          color
+        }))
+      } catch (_) {}
+      scheduleAutoSave()
+    }
+
+    function scheduleAutoSave() {
+      clearTimeout(autoSaveTimer)
+      autoSaveTimer = setTimeout(performAutoSave, 2000)
+    }
+
+    async function performAutoSave() {
+      if (!img || !sessionId) return
+      const thumb = generateThumbnail()
+      await window.api.autoSave({
+        version: 1,
+        sessionId,
+        thumbnail: thumb,
+        imageDataUrl: img.src,
+        imgSize,
+        annotations,
+        arrows,
+        tool,
+        color,
+        savedAt: new Date().toISOString()
+      })
+    }
+
+    function generateThumbnail() {
+      const MAX_W = 300
+      const ratio = Math.min(MAX_W / canvas.width, 1)
+      const tw = Math.round(canvas.width * ratio)
+      const th = Math.round(canvas.height * ratio)
+      const tc = document.createElement('canvas')
+      tc.width = tw
+      tc.height = th
+      tc.getContext('2d').drawImage(canvas, 0, 0, tw, th)
+      return tc.toDataURL('image/jpeg', 0.75)
+    }
+
+    function restoreSession() {
+      try {
+        const raw = localStorage.getItem('pinscribe-session')
+        if (!raw) return
+        const s = JSON.parse(raw)
+        if (!s.imgSrc) return
+        const el = new Image()
+        el.onload = () => {
+          const maxW = window.innerWidth - PANEL_W
+          const maxH = window.innerHeight - 44 - 56
+          scale = maxW / el.width
+          img = el
+          imgSize = s.imgSize
+          if (!sessionId) sessionId = 'session-' + Date.now()
+          annotations = s.annotations || []
+          arrows = s.arrows || []
+          zoom = s.zoom || 1
+          seq = annotations.length + 1
+          if (s.color) {
+            color = s.color
+            colorBtn.style.background = color
+            colorPicker.querySelectorAll('.color-swatch').forEach(sw =>
+              sw.classList.toggle('selected', sw.dataset.color === color)
+            )
+          }
+          if (s.tool) {
+            tool = s.tool
+            btnBox.classList.toggle('active', tool === 'box')
+            btnArrow.classList.toggle('active', tool === 'arrow')
+            btnDoubleArrow.classList.toggle('active', tool === 'double-arrow')
+          }
+          canvas.classList.add('visible')
+          document.getElementById('canvas-wrapper').classList.add('visible')
+          canvasEmpty.style.display = 'none'
+          zoomControls.classList.add('visible')
+          draw()
+          renderNotes()
+          renderZoom()
+        }
+        el.src = s.imgSrc
+      } catch (_) {}
+    }
+
+    function clearSession() {
+      localStorage.removeItem('pinscribe-session')
+      img = null
+      imgSize = { w: 0, h: 0 }
+      annotations = []
+      arrows = []
+      zoom = 1
+      seq = 1
+      draft = null
+      selectedId = null
+      selectedArrowId = null
+      moving = null
+      movingArrow = null
+      resizingArrow = null
+      sessionId = null
+      clearTimeout(autoSaveTimer)
+      canvas.classList.remove('visible')
+      document.getElementById('canvas-wrapper').classList.remove('visible')
+      canvasEmpty.style.display = 'flex'
+      zoomControls.classList.remove('visible')
+      renderNotes()
+      renderZoom()
+    }
+
+    restoreSession()
+
+    // ─── History ──────────────────────────────────────────────────────────────
+    document.getElementById('btn-history').addEventListener('click', showHistory)
+    document.getElementById('history-close').addEventListener('click', closeHistory)
+    document.getElementById('history-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('history-modal')) closeHistory()
+    })
+
+    // ─── Help modal ───────────────────────────────────────────────────────────
+    const helpModal = document.getElementById('help-modal')
+    document.getElementById('btn-help').addEventListener('click', () => helpModal.classList.add('open'))
+    document.getElementById('help-close').addEventListener('click', () => helpModal.classList.remove('open'))
+    helpModal.addEventListener('click', e => { if (e.target === helpModal) helpModal.classList.remove('open') })
+
+    // ─── Bottom bar ───────────────────────────────────────────────────────────
+    document.getElementById('btn-cancel').addEventListener('click', clearSession)
+    document.getElementById('btn-copy').addEventListener('click', copy)
+    document.getElementById('btn-save-png').addEventListener('click', savePng)
+    document.getElementById('btn-undo').addEventListener('click', undo)
+    document.getElementById('btn-redo').addEventListener('click', redo)
+    updateUndoRedo()
+
+    async function copy() {
+      if (!img) return
+      const dataUrl = await renderComposite()
+      window.api.copyToClipboard(dataUrl)
+    }
+
+    async function savePng() {
+      if (!img) return
+      const dataUrl = await renderComposite()
+      window.api.savePng(dataUrl)
+    }
+
+    function loadSession(data) {
+      if (!data || !data.imageDataUrl) return
+      closeHistory()
+      const el = new Image()
+      el.onload = () => {
+        const maxW = window.innerWidth - PANEL_W
+        scale = maxW / el.width
+        zoom = 1
+        seq = 1
+        selectedId = null
+        selectedArrowId = null
+        history = []
+        historyIndex = -1
+        panOffset = { x: 0, y: 0 }
+        img = el
+        imgSize = data.imgSize || { w: el.width, h: el.height }
+        annotations = data.annotations || []
+        arrows = data.arrows || []
+        seq = annotations.length + 1
+        sessionId = data.sessionId || ('session-' + Date.now())
+        if (data.color) {
+          color = data.color
+          colorBtn.style.background = color
+          colorPicker.querySelectorAll('.color-swatch').forEach(sw =>
+            sw.classList.toggle('selected', sw.dataset.color === color)
+          )
+        }
+        if (data.tool) {
+          tool = data.tool
+          btnBox.classList.toggle('active', tool === 'box')
+          btnArrow.classList.toggle('active', tool === 'arrow')
+          btnDoubleArrow.classList.toggle('active', tool === 'double-arrow')
+        }
+        canvas.classList.add('visible')
+        document.getElementById('canvas-wrapper').classList.add('visible')
+        canvasEmpty.style.display = 'none'
+        zoomControls.classList.add('visible')
+        applyPanOffset()
+        draw()
+        renderNotes()
+        renderZoom()
+        pushHistory()
+        saveSession()
+      }
+      el.src = data.imageDataUrl
+    }
+
+    function relDate(isoString) {
+      const diff = Math.floor((Date.now() - new Date(isoString)) / 1000)
+      if (diff < 60) return 'just now'
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago'
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago'
+      if (diff < 86400 * 7) return Math.floor(diff / 86400) + 'd ago'
+      return new Date(isoString).toLocaleDateString()
+    }
+
+    async function showHistory() {
+      const modal = document.getElementById('history-modal')
+      const cards = document.getElementById('history-cards')
+      cards.innerHTML = ''
+      const items = await window.api.getAutosaves()
+      if (!items || items.length === 0) {
+        cards.innerHTML = '<div id="history-empty">No history yet</div>'
+      } else {
+        items.forEach(item => {
+          const card = document.createElement('div')
+          card.className = 'history-card'
+          const thumb = document.createElement('img')
+          thumb.className = 'history-thumb'
+          thumb.src = item.thumbnail || ''
+          const date = document.createElement('div')
+          date.className = 'history-date'
+          date.textContent = relDate(item.savedAt)
+          card.appendChild(thumb)
+          card.appendChild(date)
+          card.addEventListener('click', async () => {
+            const data = await window.api.openAutosave(item.path)
+            if (data) loadSession(data)
+          })
+          cards.appendChild(card)
+        })
+      }
+      modal.classList.add('open')
+    }
+
+    function closeHistory() {
+      document.getElementById('history-modal').classList.remove('open')
+    }
+
+    // ─── Update modal ─────────────────────────────────────────────────────────
+    const updateModal        = document.getElementById('update-modal')
+    const updateIconWrap     = document.getElementById('update-icon-wrap')
+    const updateModalTitle   = document.getElementById('update-modal-title')
+    const updateModalSub     = document.getElementById('update-modal-sub')
+    const updateModalProg    = document.getElementById('update-modal-prog')
+    const updateModalProgBar = document.getElementById('update-modal-prog-bar')
+    const updateModalRestart = document.getElementById('update-modal-restart')
+    const updateModalClose   = document.getElementById('update-modal-close')
+
+    const UPDATE_ICONS = {
+      checking: `<svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#2a2a2a"/><circle cx="26" cy="26" r="9" stroke="#666" stroke-width="2"/><path d="M26 20v6l4 3" stroke="#888" stroke-width="2" stroke-linecap="round"/></svg>`,
+      uptodate: `<svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#30d158"/><path d="M15 27l8 8 14-16" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      downloading: `<svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#2a2000"/><path d="M26 16v16M18 26l8 8 8-8" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      ready: `<svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#14290a"/><path d="M26 35V21M18 29l8-8 8 8" stroke="#30d158" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      installing: `<svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#2a2000"/><circle cx="26" cy="26" r="9" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 3"/></svg>`,
+    }
+
+    function showUpdateModal(state, { version, percent } = {}) {
+      updateModal.classList.add('open')
+      updateModalProg.style.display = 'none'
+      updateModalRestart.style.display = 'none'
+      updateIconWrap.innerHTML = UPDATE_ICONS[state] || UPDATE_ICONS.checking
+      if (state === 'checking') {
+        updateModalTitle.textContent = 'Checking for updates…'
+        updateModalSub.textContent = ''
+      } else if (state === 'uptodate') {
+        updateModalTitle.textContent = 'Up to date'
+        updateModalSub.textContent = `You are on the latest version (v${version}).`
+      } else if (state === 'downloading') {
+        updateModalTitle.textContent = 'Downloading update…'
+        updateModalSub.textContent = percent > 0 ? `${percent}%` : ''
+        updateModalProg.style.display = 'block'
+        updateModalProgBar.style.width = (percent || 0) + '%'
+      } else if (state === 'ready') {
+        updateModalTitle.textContent = 'Update ready'
+        updateModalSub.textContent = `v${version} is ready to install.`
+        updateModalRestart.style.display = 'block'
+      } else if (state === 'installing') {
+        updateModalTitle.textContent = 'Installing update…'
+        updateModalSub.textContent = 'The app will restart shortly.'
+        updateModalProg.style.display = 'block'
+        updateModalProgBar.style.width = '100%'
+      }
+    }
+
+    updateModalClose.addEventListener('click', () => updateModal.classList.remove('open'))
+    updateModalRestart.addEventListener('click', () => {
+      showUpdateModal('installing')
+      window.api.restartForUpdate()
+    })
+
+    window.api.onUpdateStatus(({ state, version, percent }) => {
+      showUpdateModal(state, { version, percent })
+    })
+
+    // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+    document.addEventListener('keydown', async e => {
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key === 'w') { e.preventDefault(); window.api.hideWindow() }
+      if (mod && e.key === '0') { e.preventDefault(); if (img) { zoom = 1; panOffset = { x: 0, y: 0 }; applyPanOffset(); draw(); renderZoom(); saveSession() } }
+      if (mod && e.key === 'c' && !e.target.matches('textarea, input')) { e.preventDefault(); copy() }
+      if (mod && e.key === 'd' && !e.target.matches('textarea, input')) {
+        e.preventDefault()
+        if (selectedId) {
+          const ann = annotations.find(a => a.id === selectedId)
+          if (ann) {
+            pushHistory()
+            const offset = 20 / es()
+            const id = 'shape-' + Date.now()
+            const newAnn = { ...ann, id, num: seq++,
+              box: ann.box ? { ...ann.box, x: ann.box.x + offset, y: ann.box.y + offset } : ann.box,
+              point: ann.point ? { x: ann.point.x + offset, y: ann.point.y + offset } : ann.point
+            }
+            annotations = [...annotations, newAnn]
+            selectedId = id
+            draw(); renderNotes(); saveSession()
+          }
+        }
+      }
+      if (mod && e.key === 'n') { e.preventDefault(); clearSession() }
+      if (mod && e.key === 'o') { e.preventDefault(); fileInput.click() }
+      if (mod && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+      if (mod && e.key === 'z' && e.shiftKey) { e.preventDefault(); redo() }
+      if (mod && e.key === 'v' && !currentPopupId) {
+        e.preventDefault()
+        const dataUrl = await window.api.pasteImage()
+        if (dataUrl) loadImage(dataUrl)
+      }
+      if (e.key === 'Escape') { closeColorPicker(); if (currentPopupId) closePopup(); closeArrowPopup(); helpModal.classList.remove('open'); closeHistory() }
+      if (currentPopupId && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePopup() }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.matches('textarea, input') && !currentPopupId) {
+        if (selectedArrowId) {
+          e.preventDefault()
+          pushHistory()
+          arrows = arrows.filter(a => a.id !== selectedArrowId)
+          selectedArrowId = null
+          draw()
+          saveSession()
+        } else if (selectedId) {
+          e.preventDefault()
+          const ann = annotations.find(a => a.id === selectedId)
+          if (ann) {
+            if (ann.comment.trim()) {
+              openPopup(selectedId)
+            } else {
+              pushHistory()
+              annotations = annotations.filter(a => a.id !== selectedId)
+              renumber()
+              selectedId = null
+              draw()
+              renderNotes()
+              saveSession()
+            }
+          }
+        }
+      }
+      if (e.key === ' ' && !e.target.matches('textarea, input') && img) {
+        e.preventDefault()
+        if (!spaceHeld) { spaceHeld = true; updateCursor() }
+      }
+    })
+
+    document.addEventListener('keyup', e => {
+      if (e.key === ' ') {
+        spaceHeld = false
+        isPanning = false
+        updateCursor()
+      }
+    })
+
+    // ─── Composite render (output image) ─────────────────────────────────────
+    function wrapText(cx, text, font, maxWidth) {
+      cx.font = font
+      const words = text.split(' ')
+      const lines = []
+      let line = ''
+      for (const word of words) {
+        const test = line ? line + ' ' + word : word
+        if (line && cx.measureText(test).width > maxWidth) {
+          lines.push(line)
+          line = word
+        } else {
+          line = test
+        }
+      }
+      if (line) lines.push(line)
+      return lines.length ? lines : ['']
+    }
+
+    async function renderComposite() {
+      const PAD = 24
+      const COMP_PANEL = 300
+      const pinR = 14
+      const pinFont = 12
+      const noteFont = '17px -apple-system, BlinkMacSystemFont, sans-serif'
+      const lineH = 22
+      const textX = PAD + pinR * 2 + 8
+      const textMaxW = COMP_PANEL - textX - PAD
+
+      const imgW = imgSize.w
+      const imgH = imgSize.h
+      const strokeW = Math.max(2, Math.round(imgW * 0.002))
+      const boxStrokeW = Math.max(1.5, Math.round(imgW * 0.0015))
+
+      // Re-load image into a fresh element so it paints correctly on the offscreen canvas
+      const freshImg = await new Promise((resolve, reject) => {
+        const el = new Image()
+        el.onload = () => resolve(el)
+        el.onerror = reject
+        el.src = img.src
+      })
+
+      // Pre-compute wrapped lines per annotated note
+      const tempCtx = document.createElement('canvas').getContext('2d')
+      const noted = annotations.filter(a => a.comment.trim())
+      const notedItems = noted.map(a => {
+        const lines = wrapText(tempCtx, a.comment, noteFont, textMaxW)
+        const height = Math.max(pinR * 2 + 4, lines.length * lineH + 4)
+        return { ...a, lines, height }
+      })
+
+      const titleH = 44
+      const itemGap = 8
+      const notesH = titleH + notedItems.reduce((s, it) => s + it.height + itemGap, 0) + PAD * 2
+      const totalH = Math.max(imgH, notesH)
+      const totalW = COMP_PANEL + imgW
+
+      const c = document.createElement('canvas')
+      c.width  = totalW
+      c.height = totalH
+      const cx = c.getContext('2d')
+
+      cx.fillStyle = '#fff'
+      cx.fillRect(0, 0, totalW, totalH)
+
+      cx.fillStyle = '#111'
+      cx.font = 'bold 18px -apple-system, BlinkMacSystemFont, sans-serif'
+      cx.fillText('Notes', PAD, PAD + 18)
+
+      let noteY = PAD + titleH
+      notedItems.forEach(it => {
+        const pinCY = noteY + pinR
+
+        cx.beginPath()
+        cx.arc(PAD + pinR, pinCY, pinR, 0, Math.PI * 2)
+        cx.fillStyle = it.color
+        cx.fill()
+
+        cx.fillStyle = '#fff'
+        cx.font = `bold ${pinFont}px -apple-system, BlinkMacSystemFont, sans-serif`
+        cx.textAlign = 'center'
+        cx.textBaseline = 'middle'
+        cx.fillText(String(it.num), PAD + pinR, pinCY + 1)
+        cx.textAlign = 'left'
+        cx.textBaseline = 'alphabetic'
+
+        cx.fillStyle = '#222'
+        cx.font = noteFont
+        it.lines.forEach((line, i) => {
+          cx.fillText(line, textX, noteY + lineH + i * lineH)
+        })
+
+        noteY += it.height + itemGap
+      })
+
+      cx.strokeStyle = '#e5e5e5'
+      cx.lineWidth = 1
+      cx.beginPath()
+      cx.moveTo(COMP_PANEL, 0)
+      cx.lineTo(COMP_PANEL, totalH)
+      cx.stroke()
+
+      const imgOffY = (totalH - imgH) / 2
+      cx.drawImage(freshImg, COMP_PANEL, imgOffY, imgW, imgH)
+
+      arrows.forEach(a => {
+        cx.strokeStyle = a.color
+        strokeArrow(cx, COMP_PANEL + a.x1, imgOffY + a.y1, COMP_PANEL + a.x2, imgOffY + a.y2, 2, a.bidirectional)
+        if (a.label) {
+          const lx = COMP_PANEL + (a.x1 + a.x2) / 2
+          const ly = imgOffY + (a.y1 + a.y2) / 2
+          cx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif'
+          cx.textAlign = 'center'
+          cx.textBaseline = 'middle'
+          const tw = cx.measureText(a.label).width
+          const ph = 22, pw = tw + 14, pr = 6
+          cx.fillStyle = a.color
+          cx.beginPath()
+          cx.roundRect(lx - pw / 2, ly - ph / 2, pw, ph, pr)
+          cx.fill()
+          cx.fillStyle = '#fff'
+          cx.fillText(a.label, lx, ly)
+          cx.textAlign = 'left'
+          cx.textBaseline = 'alphabetic'
+        }
+      })
+
+      annotations.forEach(a => {
+        if (!a.box) return
+        cx.strokeStyle = a.color
+        cx.lineWidth = boxStrokeW
+        cx.strokeRect(COMP_PANEL + a.box.x, imgOffY + a.box.y, a.box.w, a.box.h)
+
+        const px = COMP_PANEL + a.box.x
+        const py = imgOffY + a.box.y
+
+        cx.beginPath()
+        cx.arc(px, py, pinR, 0, Math.PI * 2)
+        cx.fillStyle = a.color
+        cx.fill()
+
+        cx.fillStyle = '#fff'
+        cx.font = `bold ${pinFont}px -apple-system, BlinkMacSystemFont, sans-serif`
+        cx.textAlign = 'center'
+        cx.textBaseline = 'middle'
+        cx.fillText(String(a.num), px, py + 1)
+        cx.textAlign = 'left'
+        cx.textBaseline = 'alphabetic'
+      })
+
+      return c.toDataURL('image/png')
+    }
+
+  </script>
+</body>
 </html>

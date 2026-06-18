@@ -15,4 +15,12 @@ contextBridge.exposeInMainWorld('api', {
   onUpdateDownloaded: (cb: () => void) => ipcRenderer.on('update-downloaded', () => cb()),
   onUpdateNotAvailable: (cb: () => void) => ipcRenderer.on('update-not-available', () => cb()),
   onUpdateError: (cb: (msg: string) => void) => ipcRenderer.on('update-error', (_e, msg) => cb(msg)),
+  restartForUpdate: () => ipcRenderer.send('install-update'),
+  onUpdateStatus: (cb: (data: { state: string; version?: string; percent?: number }) => void) => {
+    ipcRenderer.on('update-available', (_e, version) => cb({ state: 'downloading', version, percent: 0 }))
+    ipcRenderer.on('update-progress', (_e, percent) => cb({ state: 'downloading', percent }))
+    ipcRenderer.on('update-downloaded', () => cb({ state: 'ready' }))
+    ipcRenderer.on('update-not-available', () => cb({ state: 'uptodate' }))
+    ipcRenderer.on('update-error', (_e, msg) => cb({ state: 'error', version: msg }))
+  },
 })
