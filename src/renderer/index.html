@@ -443,11 +443,7 @@
           <path d="M2 8h12M2 8l3-2.5M2 8l3 2.5M14 8l-3-2.5M14 8l-3 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
-      <button id="btn-text" class="tool-btn" title="Text">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M2 3h12M8 3v10M5 13h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
+      <button id="btn-text" class="tool-btn" title="Text" style="font-weight:bold;font-size:14px;font-family:-apple-system,sans-serif">T</button>
       <div class="toolbar-divider"></div>
       <div>
         <button id="color-btn" title="Annotation colour"></button>
@@ -516,7 +512,7 @@
       </button>
     </div>
     <div id="action-buttons">
-      <button class="action-btn" id="btn-save-png">Save PNG</button>
+      <button class="action-btn" id="btn-save-png">Save PNG <span class="kbd">⌘S</span></button>
       <button class="action-btn primary" id="btn-copy">Copy <span class="kbd primary">⌘C</span></button>
     </div>
     <div style="position:absolute;right:20px;display:flex;align-items:center;gap:8px;">
@@ -561,6 +557,8 @@
     <div id="help-box">
       <h3>Keyboard shortcuts</h3>
       <div class="help-row"><span class="help-label">Copy composite</span><span class="help-kbd">⌘C</span></div>
+      <div class="help-row"><span class="help-label">Save PNG</span><span class="help-kbd">⌘S</span></div>
+      <div class="help-row"><span class="help-label">Straight arrow</span><span class="help-kbd">Shift+drag</span></div>
       <div class="help-row"><span class="help-label">New session</span><span class="help-kbd">⌘N</span></div>
       <div class="help-row"><span class="help-label">Open image</span><span class="help-kbd">⌘O</span></div>
       <div class="help-row"><span class="help-label">Paste image</span><span class="help-kbd">⌘V</span></div>
@@ -846,8 +844,10 @@
         if (a.box) ctx.strokeRect(a.box.x * s, a.box.y * s, a.box.w * s, a.box.h * s)
         ctx.shadowBlur = 0
         ctx.lineWidth = 2
-        const px = a.box ? a.box.x * s : a.point?.x * s ?? 0
-        const py = a.box ? a.box.y * s : a.point?.y * s ?? 0
+        const rawPx = a.box ? a.box.x * s : a.point?.x * s ?? 0
+        const rawPy = a.box ? a.box.y * s : a.point?.y * s ?? 0
+        const px = Math.max(PIN_R, Math.min(rawPx, canvas.width - PIN_R))
+        const py = Math.max(PIN_R, Math.min(rawPy, canvas.height - PIN_R))
         if (a.id === hoveredPinId) { ctx.shadowColor = a.color; ctx.shadowBlur = 6 }
         drawPin(px, py, a.num, a.color)
         ctx.shadowBlur = 0
@@ -975,6 +975,14 @@
       })
     }
 
+    function pinHitTight(x, y) {
+      return annotations.find(a => {
+        const px = a.box ? a.box.x : a.point.x
+        const py = a.box ? a.box.y : a.point.y
+        return Math.hypot(px - x, py - y) <= PIN_R * 0.65 / es()
+      })
+    }
+
     function arrowAt(x, y) {
       const threshold = 12 / es()
       return arrows.find(a => {
@@ -996,7 +1004,7 @@
         textInput.style.top = (e.clientY - 14) + 'px'
         textInput.value = ''
         textInput.classList.add('active')
-        textInput.focus()
+        setTimeout(() => textInput.focus(), 0)
         return
       }
       if (spaceHeld) {
@@ -1008,7 +1016,7 @@
       closeColorPicker()
       const pos = canvasPos(e)
 
-      const hit = annotationAt(pos.x, pos.y)
+      const hit = pinHitTight(pos.x, pos.y)
       if (hit) {
         if (currentPopupId === hit.id) { closePopup(); return }
         if (currentPopupId) closePopup()
@@ -1224,7 +1232,13 @@
       if (!draft) return
       const dx = Math.abs(draft.x2 - draft.x1)
       const dy = Math.abs(draft.y2 - draft.y1)
-      if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) { draft = null; draw(); return }
+      if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) {
+        const sx = draft.x1, sy = draft.y1
+        draft = null
+        const pinClick = annotationAt(sx, sy)
+        if (pinClick) { draw(); openPopup(pinClick.id); return }
+        draw(); return
+      }
 
       const id = 'shape-' + Date.now()
       pushHistory()
@@ -1666,6 +1680,7 @@
           btnBox.classList.toggle('active', tool === 'box')
           btnArrow.classList.toggle('active', tool === 'arrow')
           btnDoubleArrow.classList.toggle('active', tool === 'double-arrow')
+          btnText.classList.toggle('active', tool === 'text')
         }
         canvas.classList.add('visible')
         document.getElementById('canvas-wrapper').classList.add('visible')
@@ -1994,8 +2009,8 @@
         cx.lineWidth = boxStrokeW
         cx.strokeRect(COMP_PANEL + a.box.x, imgOffY + a.box.y, a.box.w, a.box.h)
 
-        const px = COMP_PANEL + a.box.x
-        const py = imgOffY + a.box.y
+        const px = Math.max(COMP_PANEL + pinR, Math.min(COMP_PANEL + a.box.x, COMP_PANEL + imgW - pinR))
+        const py = Math.max(imgOffY + pinR, Math.min(imgOffY + a.box.y, imgOffY + imgH - pinR))
 
         cx.beginPath()
         cx.arc(px, py, pinR, 0, Math.PI * 2)
