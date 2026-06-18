@@ -148,7 +148,9 @@ function createWindow(): void {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  win.once('ready-to-show', () => win?.show())
+  win.once('ready-to-show', () => { win?.show(); app.dock?.show() })
+  win.on('show', () => app.dock?.show())
+  win.on('hide', () => app.dock?.hide())
   win.on('close', e => { if (!allowQuit) { e.preventDefault(); win?.hide() } })
   win.on('closed', () => { win = null })
 }
@@ -298,5 +300,6 @@ app.whenReady().then(() => {
   setTimeout(() => checkForUpdates(false), 3000)
 })
 
+app.on('before-quit', () => { allowQuit = true })
 app.on('window-all-closed', () => { if (allowQuit) app.quit() })
 app.on('will-quit', () => globalShortcut.unregisterAll())

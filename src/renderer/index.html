@@ -327,7 +327,6 @@
       min-width: 40px;
       font-weight: bold;
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
       z-index: 500;
     }
     #text-input.active { display: block; }
@@ -599,7 +598,10 @@
     let arrows = []
     let texts = []
     let activeTextPos = null
+    let selectedTextId = null
+    let hoveredTextId = null
     let draft = null
+    const _measureCtx = document.createElement('canvas').getContext('2d')
     let isDown = false
     let seq = 1
     let history = []
@@ -771,6 +773,7 @@
         texts = []
         selectedId = null
         selectedArrowId = null
+        selectedTextId = null
         history = []
         historyIndex = -1
         panOffset = { x: 0, y: 0 }
@@ -869,7 +872,20 @@
       }
 
       texts.forEach(t => {
-        ctx.font = `bold ${16 * s}px -apple-system, sans-serif`
+        const fs = 16 * s
+        ctx.font = `bold ${fs}px -apple-system, sans-serif`
+        if (t.id === hoveredTextId || t.id === selectedTextId) {
+          const w = ctx.measureText(t.text).width
+          ctx.fillStyle = 'rgba(255,255,255,0.15)'
+          ctx.fillRect(t.x * s - 2, t.y * s - fs, w + 4, fs + 4)
+          if (t.id === selectedTextId) {
+            ctx.strokeStyle = t.color
+            ctx.lineWidth = 1
+            ctx.setLineDash([3, 2])
+            ctx.strokeRect(t.x * s - 2, t.y * s - fs, w + 4, fs + 4)
+            ctx.setLineDash([])
+          }
+        }
         ctx.fillStyle = t.color
         ctx.fillText(t.text, t.x * s, t.y * s)
       })
@@ -975,6 +991,15 @@
       })
     }
 
+    function textAt(x, y) {
+      return texts.find(t => {
+        _measureCtx.font = 'bold 16px -apple-system, sans-serif'
+        const w = _measureCtx.measureText(t.text).width / es()
+        const h = 16 / es()
+        return x >= t.x && x <= t.x + w && y >= t.y - h && y <= t.y + 4 / es()
+      })
+    }
+
     function pinHitTight(x, y) {
       return annotations.find(a => {
         const px = a.box ? a.box.x : a.point.x
@@ -1070,18 +1095,16 @@
         return
       }
 
-      const insideBox = annotations.find(a => a.box &&
-        pos.x >= a.box.x && pos.x <= a.box.x + a.box.w &&
-        pos.y >= a.box.y && pos.y <= a.box.y + a.box.h)
-      if (insideBox) {
-        pushHistory()
-        selectedId = insideBox.id
+      const textHit = textAt(pos.x, pos.y)
+      if (textHit) {
+        selectedTextId = textHit.id
+        selectedId = null
         selectedArrowId = null
-        moving = { annotationId: insideBox.id, startMouse: pos, startBox: { ...insideBox.box }, dragged: false, fromPin: false }
         draw()
         return
       }
 
+      selectedTextId = null
       selectedId = null
       selectedArrowId = null
       isDown = true
@@ -1177,6 +1200,10 @@
         const newHoveredPin = pinHover ? pinHover.id : null
         if (newHoveredPin !== hoveredPinId) { hoveredPinId = newHoveredPin; draw() }
 
+        const textHover = textAt(pos.x, pos.y)
+        const newHoveredText = textHover ? textHover.id : null
+        if (newHoveredText !== hoveredTextId) { hoveredTextId = newHoveredText; draw() }
+
         const insideBox = annotations.find(a => a.box &&
           pos.x >= a.box.x && pos.x <= a.box.x + a.box.w &&
           pos.y >= a.box.y && pos.y <= a.box.y + a.box.h)
@@ -1185,12 +1212,10 @@
 
         if (tool === 'text') {
           canvas.style.cursor = 'text'
-        } else if (pinHover || arrowHover) {
+        } else if (pinHover || arrowHover || textHover) {
           canvas.style.cursor = 'pointer'
         } else if (border) {
           canvas.style.cursor = HANDLE_CURSORS[border.handle]
-        } else if (insideBox) {
-          canvas.style.cursor = 'pointer'
         } else {
           canvas.style.cursor = 'crosshair'
         }
@@ -1594,6 +1619,8 @@
       annotations = []
       arrows = []
       texts = []
+      selectedTextId = null
+      hoveredTextId = null
       zoom = 1
       seq = 1
       draft = null
@@ -1831,7 +1858,14 @@
       if (e.key === 'Escape') { closeColorPicker(); if (currentPopupId) closePopup(); closeArrowPopup(); helpModal.classList.remove('open'); closeHistory() }
       if (currentPopupId && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePopup() }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.matches('textarea, input') && !currentPopupId) {
-        if (selectedArrowId) {
+        if (selectedTextId) {
+          e.preventDefault()
+          pushHistory()
+          texts = texts.filter(t => t.id !== selectedTextId)
+          selectedTextId = null
+          draw()
+          saveSession()
+        } else if (selectedArrowId) {
           e.preventDefault()
           pushHistory()
           arrows = arrows.filter(a => a.id !== selectedArrowId)
