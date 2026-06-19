@@ -14,5 +14,7 @@ interface Window {
     onUpdateDownloaded: (cb: () => void) => void
     onUpdateNotAvailable: (cb: () => void) => void
     onUpdateError: (cb: (msg: string) => void) => void
+    onUpdateStatus: (cb: (data: { state: string; version?: string; percent?: number }) => void) => void
+    restartForUpdate: () => void
   }
 }

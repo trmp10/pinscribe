@@ -11,6 +11,8 @@ export interface Arrow {
   id: string
   x1: number; y1: number; x2: number; y2: number
   color: string
+  bidirectional?: boolean
+  label?: string
 }
 
 export interface TextItem {
@@ -109,7 +111,20 @@ export function renderComposite(
   arrows.forEach(a => {
     ctx.strokeStyle = a.color
     ctx.lineWidth = strokeW
-    drawArrow(ctx, PANEL_W + a.x1, imgOffsetY + a.y1, PANEL_W + a.x2, imgOffsetY + a.y2, strokeW)
+    drawArrow(ctx, PANEL_W + a.x1, imgOffsetY + a.y1, PANEL_W + a.x2, imgOffsetY + a.y2, strokeW, a.bidirectional)
+    if (a.label) {
+      const lx = PANEL_W + (a.x1 + a.x2) / 2
+      const ly = imgOffsetY + (a.y1 + a.y2) / 2
+      ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      const tw = ctx.measureText(a.label).width
+      const pw = tw + 12, ph = 18, pr = 5
+      ctx.fillStyle = a.color
+      ctx.beginPath(); ctx.roundRect(lx - pw / 2, ly - ph / 2, pw, ph, pr); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.fillText(a.label, lx, ly)
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+    }
   })
 
   // Text items on image
@@ -176,7 +191,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines.length ? lines : ['']
 }
 
-function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, lw: number): void {
+function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, lw: number, bidirectional?: boolean): void {
   const headLen = Math.max(14, lw * 5)
   const angle = Math.atan2(y2 - y1, x2 - x1)
   ctx.beginPath()
@@ -185,5 +200,12 @@ function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: nu
   ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6))
   ctx.moveTo(x2, y2)
   ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6))
+  if (bidirectional) {
+    const ra = Math.atan2(y1 - y2, x1 - x2)
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x1 - headLen * Math.cos(ra - Math.PI / 6), y1 - headLen * Math.sin(ra - Math.PI / 6))
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x1 - headLen * Math.cos(ra + Math.PI / 6), y1 - headLen * Math.sin(ra + Math.PI / 6))
+  }
   ctx.stroke()
 }
