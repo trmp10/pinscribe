@@ -1,10 +1,8 @@
-import { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalShortcut, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalShortcut, dialog, net } from 'electron'
 import { join } from 'path'
 import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, createWriteStream } from 'fs'
-import { get as httpsGetRaw } from 'https'
 import { tmpdir } from 'os'
 import { execFile } from 'child_process'
-import type { IncomingMessage } from 'http'
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -15,45 +13,35 @@ let allowQuit = false
 
 const YML_URL = 'https://github.com/trmp10/pinscribe/releases/latest/download/latest-mac.yml'
 
-function httpsGet(url: string): Promise<IncomingMessage> {
-  return new Promise((resolve, reject) => {
-    const req = httpsGetRaw(url, { headers: { 'User-Agent': 'pinscribe-updater' } }, res => {
-      const status = res.statusCode ?? 0
-      if ([301, 302, 307, 308].includes(status) && res.headers.location) {
-        return httpsGet(res.headers.location).then(resolve).catch(reject)
-      }
-      resolve(res)
-    }).on('error', reject)
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Request timed out')) })
-  })
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Request timed out')), ms))
+  ])
 }
 
 async function fetchText(url: string): Promise<string> {
-  const res = await httpsGet(url)
-  return new Promise((resolve, reject) => {
-    let data = ''
-    res.on('data', (chunk: Buffer) => { data += chunk })
-    res.on('end', () => resolve(data))
-    res.on('error', reject)
-  })
+  const res = await withTimeout(net.fetch(url), 15000)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.text()
 }
 
-function downloadFile(url: string, destPath: string, onProgress?: (pct: number) => void): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const res = await httpsGet(url)
-      const total = parseInt(res.headers['content-length'] ?? '0', 10)
-      let received = 0
-      const file = createWriteStream(destPath)
-      res.on('data', (chunk: Buffer) => {
-        received += chunk.length
-        file.write(chunk)
-        if (total > 0 && onProgress) onProgress(Math.round((received / total) * 100))
-      })
-      res.on('end', () => { file.end(); resolve() })
-      res.on('error', (err: Error) => { file.destroy(); reject(err) })
-    } catch (e) { reject(e) }
-  })
+async function downloadFile(url: string, destPath: string, onProgress?: (pct: number) => void): Promise<void> {
+  const res = await withTimeout(net.fetch(url), 120000)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const total = parseInt(res.headers.get('content-length') || '0', 10)
+  let received = 0
+  const file = createWriteStream(destPath)
+  const reader = res.body!.getReader()
+  const pump = async (): Promise<void> => {
+    const { done, value } = await reader.read()
+    if (done) { file.end(); return }
+    received += value.length
+    file.write(Buffer.from(value))
+    if (total > 0 && onProgress) onProgress(Math.round((received / total) * 100))
+    return pump()
+  }
+  await pump()
 }
 
 function execFileAsync(cmd: string, args: string[]): Promise<string> {

@@ -1407,8 +1407,8 @@
       currentPopupId = id
 
       const r = canvas.getBoundingClientRect()
-      const x = r.left + (ann.box.x + ann.box.w) * es()
-      const y = r.top  + (ann.box.y + ann.box.h) * es()
+      const x = r.left + (ann.box ? ann.box.x + ann.box.w : ann.point.x) * es()
+      const y = r.top  + (ann.box ? ann.box.y + ann.box.h : ann.point.y) * es()
       const popupW = 300, popupH = 210
       commentPopup.style.left = Math.min(Math.max(x, 10), window.innerWidth  - popupW - 10) + 'px'
       commentPopup.style.top  = Math.min(Math.max(y, 10), window.innerHeight - popupH - 10) + 'px'
