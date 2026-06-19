@@ -1077,7 +1077,7 @@
         pushHistory()
         selectedId = hit.id
         selectedArrowId = null
-        moving = { annotationId: hit.id, startMouse: pos, startBox: { ...hit.box }, dragged: false, fromPin: true }
+        moving = { annotationId: hit.id, startMouse: pos, startBox: hit.box ? { ...hit.box } : null, startPoint: hit.point ? { ...hit.point } : null, dragged: false, fromPin: true }
         draw()
         return
       }
@@ -1175,6 +1175,10 @@
         if (moving.startBox) {
           annotations = annotations.map(a => a.id === moving.annotationId
             ? { ...a, box: { ...moving.startBox, x: moving.startBox.x + dx, y: moving.startBox.y + dy } }
+            : a)
+        } else if (moving.startPoint) {
+          annotations = annotations.map(a => a.id === moving.annotationId
+            ? { ...a, point: { x: moving.startPoint.x + dx, y: moving.startPoint.y + dy } }
             : a)
         }
         draw()
