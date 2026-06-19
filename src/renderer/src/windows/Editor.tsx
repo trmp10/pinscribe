@@ -227,6 +227,15 @@ export default function Editor(): React.ReactElement {
           setSelectedArrowId(null)
         }
       }
+      // Single-key tool shortcuts (no modifier, no input focused)
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !activeText &&
+          !(document.activeElement instanceof HTMLInputElement) &&
+          !(document.activeElement instanceof HTMLTextAreaElement)) {
+        if (e.key === 'v') setTool('cursor')
+        if (e.key === 'p') setTool('box')
+        if (e.key === 'a') setTool('arrow')
+        if (e.key === 't') setTool('text')
+      }
       if (e.key === 'Escape') {
         if (helpOpen) { setHelpOpen(false); return }
         if (historyOpen) { setHistoryOpen(false); return }
@@ -828,22 +837,22 @@ export default function Editor(): React.ReactElement {
           display: 'flex', alignItems: 'center', gap: 4,
           WebkitAppRegion: 'no-drag'
         } as React.CSSProperties}>
-          <ToolBtn active={tool === 'cursor'} onClick={() => setTool('cursor')} title="Select (Esc)">
+          <ToolBtn active={tool === 'cursor'} onClick={() => setTool('cursor')} title="Select (V)">
             <IconCursor />
           </ToolBtn>
 
           <Divider />
 
-          <ToolBtn active={tool === 'box'} onClick={() => setTool('box')} title="Annotation box">
+          <ToolBtn active={tool === 'box'} onClick={() => setTool('box')} title="Annotation box (P)">
             <IconPin />
           </ToolBtn>
-          <ToolBtn active={tool === 'arrow'} onClick={() => setTool('arrow')} title="Arrow (hold Shift to lock straight)">
+          <ToolBtn active={tool === 'arrow'} onClick={() => setTool('arrow')} title="Arrow (A) — hold Shift to lock straight">
             <IconArrow />
           </ToolBtn>
-          <ToolBtn active={tool === 'double-arrow'} onClick={() => setTool('double-arrow')} title="Double arrow (hold Shift to lock straight)">
+          <ToolBtn active={tool === 'double-arrow'} onClick={() => setTool('double-arrow')} title="Double arrow — hold Shift to lock straight">
             <IconDoubleArrow />
           </ToolBtn>
-          <ToolBtn active={tool === 'text'} onClick={() => setTool('text')} title="Text">
+          <ToolBtn active={tool === 'text'} onClick={() => setTool('text')} title="Text (T)">
             <IconText />
           </ToolBtn>
 
@@ -1188,11 +1197,12 @@ export default function Editor(): React.ReactElement {
             onClick={e => e.stopPropagation()}>
             <h3 style={{ color: '#fff', fontSize: 15, marginBottom: 16, fontWeight: 600 }}>Keyboard shortcuts</h3>
             {([
+              ['Select tool', 'V'], ['Annotation tool', 'P'], ['Arrow tool', 'A'], ['Text tool', 'T'],
               ['Copy composite', '⌘C'], ['Save PNG', '⌘S'], ['New session', '⌘N'],
               ['Open image', '⌘O'], ['Paste image', '⌘V'], ['Undo', '⌘Z'],
               ['Redo', '⌘⇧Z'], ['Duplicate annotation', '⌘D'], ['Delete selected', '⌫'],
               ['Straight arrow', 'Shift+drag'], ['Pan canvas', 'Space+drag'],
-              ['Label arrow', 'double-click'], ['Select/cursor', 'Esc'],
+              ['Label arrow', 'double-click'], ['Return to cursor', 'Esc'],
             ] as [string, string][]).map(([label, kbd]) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #2a2a2a' }}>
                 <span style={{ color: '#aaa', fontSize: 13 }}>{label}</span>
