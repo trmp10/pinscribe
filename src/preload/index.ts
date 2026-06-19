@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('update-available', (_e, version) => cb({ state: 'downloading', version, percent: 0 }))
     ipcRenderer.on('update-progress', (_e, percent) => cb({ state: 'downloading', percent }))
     ipcRenderer.on('update-downloaded', () => cb({ state: 'ready' }))
-    ipcRenderer.on('update-not-available', (_e, version) => cb({ state: 'uptodate', version: `v${version}` }))
+    ipcRenderer.on('update-not-available', (_e, version) => cb({ state: 'uptodate', version }))
     ipcRenderer.on('update-error', (_e, msg) => cb({ state: 'error', version: msg }))
   },
 })
