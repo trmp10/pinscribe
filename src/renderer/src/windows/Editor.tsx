@@ -4,7 +4,7 @@ import CommentPopup from '../components/CommentPopup'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tool = 'box' | 'arrow' | 'text'
+type Tool = 'cursor' | 'box' | 'arrow' | 'text'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -12,6 +12,7 @@ const PANEL_W = 260
 const PIN_R = 14
 const DRAG_THRESHOLD = 8
 const UI_COLOR = '#e8334a'
+const TEXT_MAX_W = 200
 
 const COLORS = [
   { label: 'Red',    value: '#e8334a' },
@@ -26,14 +27,26 @@ const COLORS = [
 export default function Editor(): React.ReactElement {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef  = useRef<HTMLTextAreaElement>(null)
   const seq          = useRef(1)
   const isDown       = useRef(false)
+
+  // Text drag / editing refs
+  const draggingTextId      = useRef<string | null>(null)
+  const draggingTextOffset  = useRef({ x: 0, y: 0 })
+  const draggingActiveText  = useRef(false)
+  const draggingActiveOffset = useRef({ x: 0, y: 0 })
+  const textCancelledRef    = useRef(false)
+  const effectiveScaleRef   = useRef(1)
+  const nextTextPos         = useRef<{ x: number; y: number } | null>(null)
+  const nextEditingId       = useRef<string | null>(null)
+  const nextEditingValue    = useRef('')
 
   const [img, setImg]             = useState<HTMLImageElement | null>(null)
   const [imgSize, setImgSize]     = useState({ w: 0, h: 0 })
   const [scale, setScale]         = useState(1)
   const [zoom, setZoom]           = useState(1)
-  const [tool, setTool]           = useState<Tool>('box')
+  const [tool, setTool]           = useState<Tool>('cursor')
   const [color, setColor]         = useState(COLORS[0].value)
   const [colorOpen, setColorOpen] = useState(false)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
@@ -42,8 +55,12 @@ export default function Editor(): React.ReactElement {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [draft, setDraft]         = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const [popup, setPopup]         = useState<{ id: string; sx: number; sy: number } | null>(null)
-  const [activeText, setActiveText] = useState<{ x: number; y: number; sx: number; sy: number } | null>(null)
+  const [activeText, setActiveText] = useState<{ x: number; y: number } | null>(null)
   const [activeTextValue, setActiveTextValue] = useState('')
+  const [editingTextId, setEditingTextId] = useState<string | null>(null)
+  const [hoveredTextId, setHoveredTextId] = useState<string | null>(null)
+  const [draggingPinId, setDraggingPinId] = useState<string | null>(null)
+  const [dragOverPinId, setDragOverPinId] = useState<string | null>(null)
   const [dropHighlight, setDropHighlight] = useState(false)
   const [updateState, setUpdateState] = useState<'idle' | 'available' | 'downloading' | 'ready' | 'uptodate' | 'error'>('idle')
   const [updatePct, setUpdatePct] = useState(0)
@@ -53,14 +70,31 @@ export default function Editor(): React.ReactElement {
 
   // ─── Effects ──────────────────────────────────────────────────────────────
 
-  useEffect(() => { draw() }, [img, imgSize, scale, zoom, annotations, arrows, draft, texts, color])
+  useEffect(() => { effectiveScaleRef.current = effectiveScale }, [effectiveScale])
+
+  useEffect(() => { draw() }, [img, imgSize, scale, zoom, annotations, arrows, draft, color])
+
+  // Auto-grow textarea
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [activeTextValue, effectiveScale])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'w') window.close()
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') copyClose()
       if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); if (img) window.api.savePng(renderComposite(img, imgSize, annotations, arrows, texts)) }
-      if (e.key === 'Escape') setColorOpen(false)
+      if (e.key === 'Escape') {
+        setColorOpen(false)
+        textCancelledRef.current = true
+        setActiveText(null)
+        setActiveTextValue('')
+        setEditingTextId(null)
+        setTool('cursor')
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -86,11 +120,32 @@ export default function Editor(): React.ReactElement {
   }, [])
 
   useEffect(() => {
+    const onMove = (e: MouseEvent): void => {
+      const es = effectiveScaleRef.current
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      if (draggingTextId.current) {
+        const x = (e.clientX - rect.left) / es - draggingTextOffset.current.x
+        const y = (e.clientY - rect.top) / es - draggingTextOffset.current.y
+        setTexts(prev => prev.map(t => t.id === draggingTextId.current ? { ...t, x, y } : t))
+      }
+      if (draggingActiveText.current) {
+        const x = (e.clientX - rect.left) / es - draggingActiveOffset.current.x
+        const y = (e.clientY - rect.top) / es - draggingActiveOffset.current.y
+        setActiveText({ x, y })
+      }
+    }
     const onUp = (): void => {
+      draggingTextId.current = null
+      draggingActiveText.current = false
       if (isDown.current) { isDown.current = false; setDraft(null) }
     }
+    window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-    return () => window.removeEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
   }, [])
 
   useEffect(() => {
@@ -130,7 +185,7 @@ export default function Editor(): React.ReactElement {
     el.src = dataUrl
   }
 
-  // ─── Canvas drawing ───────────────────────────────────────────────────────
+  // ─── Canvas drawing (no text — texts are DOM overlays) ───────────────────
 
   function draw(): void {
     const canvas = canvasRef.current
@@ -154,13 +209,6 @@ export default function Editor(): React.ReactElement {
       const px = a.box ? a.box.x * es : a.point!.x * es
       const py = a.box ? a.box.y * es : a.point!.y * es
       drawPin(ctx, px, py, a.num, a.color)
-    })
-
-    texts.forEach(t => {
-      const fs = 16 * es
-      ctx.font = `bold ${fs}px -apple-system, sans-serif`
-      ctx.fillStyle = t.color
-      ctx.fillText(t.text, t.x * es, t.y * es)
     })
 
     if (draft) {
@@ -230,22 +278,43 @@ export default function Editor(): React.ReactElement {
 
   function commitText(): void {
     if (!activeText) return
+    if (textCancelledRef.current) { textCancelledRef.current = false; return }
     const val = activeTextValue.trim()
     if (val) {
-      const id = `text-${Date.now()}`
-      setTexts(prev => [...prev, { id, x: activeText.x, y: activeText.y, text: val, color }])
+      if (editingTextId) {
+        setTexts(prev => [...prev.filter(t => t.id !== editingTextId), { id: editingTextId, x: activeText.x, y: activeText.y, text: val, color }])
+      } else {
+        setTexts(prev => [...prev, { id: `text-${Date.now()}`, x: activeText.x, y: activeText.y, text: val, color }])
+      }
     }
-    setActiveText(null)
-    setActiveTextValue('')
+    // Chain to next text placement if queued from a simultaneous mousedown
+    const next  = nextTextPos.current
+    const nId   = nextEditingId.current
+    const nVal  = nextEditingValue.current
+    nextTextPos.current      = null
+    nextEditingId.current    = null
+    nextEditingValue.current = ''
+    setActiveText(next)
+    setActiveTextValue(nVal)
+    setEditingTextId(nId)
   }
 
   function onMouseDown(e: React.MouseEvent<HTMLCanvasElement>): void {
     if (popup) return
     setColorOpen(false)
     const pos = canvasPos(e)
+    if (tool === 'cursor') return
     if (tool === 'text') {
-      setActiveText({ x: pos.x, y: pos.y, sx: e.clientX, sy: e.clientY })
-      setActiveTextValue('')
+      if (activeText) {
+        // Another text is open — queue this position; blur will commit current then open next
+        nextTextPos.current      = pos
+        nextEditingId.current    = null
+        nextEditingValue.current = ''
+      } else {
+        setActiveText({ x: pos.x, y: pos.y })
+        setActiveTextValue('')
+        setEditingTextId(null)
+      }
       return
     }
     isDown.current = true
@@ -332,6 +401,12 @@ export default function Editor(): React.ReactElement {
           display: 'flex', alignItems: 'center', gap: 4,
           WebkitAppRegion: 'no-drag'
         } as React.CSSProperties}>
+          <ToolBtn active={tool === 'cursor'} onClick={() => setTool('cursor')} title="Select (Esc)">
+            <IconCursor />
+          </ToolBtn>
+
+          <Divider />
+
           <ToolBtn active={tool === 'box'} onClick={() => setTool('box')} title="Annotation box">
             <IconPin />
           </ToolBtn>
@@ -344,18 +419,7 @@ export default function Editor(): React.ReactElement {
 
           <Divider />
 
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setColorOpen(p => !p)} title="Annotation colour"
-              style={{ width: 22, height: 22, borderRadius: '50%', background: color, border: colorOpen ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)', cursor: 'pointer', padding: 0 }} />
-            {colorOpen && (
-              <div style={{ position: 'absolute', top: 30, left: '50%', transform: 'translateX(-50%)', background: '#222', border: '1px solid #444', borderRadius: 10, padding: 10, display: 'flex', gap: 8, zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
-                {COLORS.map(c => (
-                  <button key={c.value} title={c.label} onClick={() => { setColor(c.value); setColorOpen(false) }}
-                    style={{ width: 22, height: 22, borderRadius: '50%', background: c.value, cursor: 'pointer', border: color === c.value ? '2px solid #fff' : '2px solid transparent', padding: 0 }} />
-                ))}
-              </div>
-            )}
-          </div>
+          <ColorPicker color={color} colorOpen={colorOpen} setColor={setColor} setColorOpen={setColorOpen} />
         </div>
       </div>
 
@@ -394,8 +458,35 @@ export default function Editor(): React.ReactElement {
             <div style={{ color: '#444', fontSize: 13 }}>Annotations will appear here</div>
           )}
           {annotations.map(a => (
-            <div key={a.id} onClick={() => setPopup({ id: a.id, sx: PANEL_W + 20, sy: 120 })}
-              style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0', cursor: 'pointer' }}>
+            <div
+              key={a.id}
+              draggable
+              onDragStart={() => setDraggingPinId(a.id)}
+              onDragOver={e => { e.preventDefault(); setDragOverPinId(a.id) }}
+              onDrop={() => {
+                if (!draggingPinId || draggingPinId === a.id) return
+                setAnnotations(prev => {
+                  const from = prev.findIndex(x => x.id === draggingPinId)
+                  const to   = prev.findIndex(x => x.id === a.id)
+                  const next = [...prev]
+                  const [moved] = next.splice(from, 1)
+                  next.splice(to, 0, moved)
+                  return next.map((x, i) => ({ ...x, num: i + 1 }))
+                })
+                seq.current = annotations.length + 1
+                setDraggingPinId(null)
+                setDragOverPinId(null)
+              }}
+              onDragEnd={() => { setDraggingPinId(null); setDragOverPinId(null) }}
+              onClick={() => setPopup({ id: a.id, sx: PANEL_W + 20, sy: 120 })}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0',
+                cursor: 'grab',
+                opacity: draggingPinId === a.id ? 0.4 : 1,
+                borderTop: dragOverPinId === a.id && draggingPinId !== a.id ? `2px solid ${UI_COLOR}` : '2px solid transparent',
+                transition: 'opacity 0.1s',
+              }}
+            >
               <div style={{ width: 24, height: 24, borderRadius: '50%', background: a.color, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', lineHeight: 1, paddingTop: 2 }}>
                 {a.num}
               </div>
@@ -424,9 +515,143 @@ export default function Editor(): React.ReactElement {
               </button>
             </div>
           ) : (
-            <canvas ref={canvasRef} width={cw} height={ch}
-              style={{ display: 'block', cursor: tool === 'text' ? 'text' : 'crosshair' }}
-              onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} />
+            /* Canvas wrapper — text overlays and active input are positioned relative to this */
+            <div style={{ position: 'relative', width: cw, height: ch, flexShrink: 0 }}>
+              <canvas ref={canvasRef} width={cw} height={ch}
+                style={{ display: 'block', cursor: tool === 'cursor' ? 'default' : tool === 'text' ? 'text' : 'crosshair' }}
+                onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} />
+
+              {/* Placed text overlays */}
+              {texts.map(t => (
+                <div
+                  key={t.id}
+                  style={{
+                    position: 'absolute',
+                    left: t.x * effectiveScale,
+                    top: t.y * effectiveScale,
+                    color: t.color,
+                    fontSize: 16 * effectiveScale,
+                    fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+                    fontWeight: 'bold',
+                    maxWidth: TEXT_MAX_W * effectiveScale,
+                    wordBreak: 'break-word',
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: 1.4,
+                    cursor: tool === 'text' ? 'text' : 'move',
+                    userSelect: 'none',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.6)',
+                    padding: '2px 4px',
+                    outline: hoveredTextId === t.id ? `1.5px dashed ${t.color}` : 'none',
+                    outlineOffset: 3,
+                  }}
+                  onMouseEnter={() => setHoveredTextId(t.id)}
+                  onMouseLeave={() => setHoveredTextId(null)}
+                  onMouseDown={e => {
+                    e.stopPropagation()
+                    if (tool === 'text') {
+                      // Open for editing
+                      setTexts(prev => prev.filter(tx => tx.id !== t.id))
+                      if (activeText) {
+                        nextTextPos.current      = { x: t.x, y: t.y }
+                        nextEditingId.current    = t.id
+                        nextEditingValue.current = t.text
+                      } else {
+                        setActiveText({ x: t.x, y: t.y })
+                        setActiveTextValue(t.text)
+                        setEditingTextId(t.id)
+                      }
+                    } else {
+                      // Drag
+                      const rect = canvasRef.current!.getBoundingClientRect()
+                      const es = effectiveScaleRef.current
+                      draggingTextId.current = t.id
+                      draggingTextOffset.current = {
+                        x: (e.clientX - rect.left) / es - t.x,
+                        y: (e.clientY - rect.top) / es - t.y,
+                      }
+                    }
+                  }}
+                >
+                  {t.text}
+                </div>
+              ))}
+
+              {/* Active text input */}
+              {activeText && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: activeText.x * effectiveScale,
+                    top: activeText.y * effectiveScale,
+                    border: '1.5px dashed rgba(255,255,255,0.4)',
+                    borderRadius: 4,
+                    background: 'rgba(0,0,0,0.25)',
+                    zIndex: 10,
+                    minWidth: 80,
+                  }}
+                >
+                  {/* Drag handle */}
+                  <div
+                    style={{
+                      padding: '3px 8px',
+                      cursor: 'grab',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      borderBottom: '1px dashed rgba(255,255,255,0.2)',
+                    }}
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const rect = canvasRef.current!.getBoundingClientRect()
+                      const es = effectiveScaleRef.current
+                      draggingActiveText.current = true
+                      draggingActiveOffset.current = {
+                        x: (e.clientX - rect.left) / es - activeText.x,
+                        y: (e.clientY - rect.top) / es - activeText.y,
+                      }
+                    }}
+                  >
+                    <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 10, letterSpacing: 3 }}>• • •</span>
+                  </div>
+                  <textarea
+                    ref={textareaRef}
+                    value={activeTextValue}
+                    onChange={e => setActiveTextValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitText() }
+                      if (e.key === 'Escape') {
+                        textCancelledRef.current = true
+                        setActiveText(null)
+                        setActiveTextValue('')
+                        setEditingTextId(null)
+                        setTool('cursor')
+                      }
+                    }}
+                    onBlur={commitText}
+                    autoFocus
+                    style={{
+                      display: 'block',
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      color,
+                      fontSize: 16 * effectiveScale,
+                      fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+                      fontWeight: 'bold',
+                      width: TEXT_MAX_W * effectiveScale,
+                      minHeight: 24 * effectiveScale,
+                      height: 'auto',
+                      padding: '4px 6px',
+                      caretColor: color,
+                      textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                      resize: 'none',
+                      lineHeight: 1.4,
+                      overflow: 'hidden',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           )}
 
           {popup && (
@@ -440,35 +665,6 @@ export default function Editor(): React.ReactElement {
                 setPopup(null)
               }}
               onClose={() => setPopup(null)}
-            />
-          )}
-
-          {activeText && (
-            <input
-              value={activeTextValue}
-              onChange={e => setActiveTextValue(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') { e.preventDefault(); commitText() }
-                if (e.key === 'Escape') { setActiveText(null); setActiveTextValue('') }
-              }}
-              onBlur={commitText}
-              autoFocus
-              style={{
-                position: 'fixed',
-                left: activeText.sx,
-                top: activeText.sy - 14,
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                color,
-                fontSize: 16 * effectiveScale,
-                fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
-                fontWeight: 'bold',
-                minWidth: 40,
-                padding: 0,
-                caretColor: color,
-                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
-              }}
             />
           )}
         </div>
@@ -494,6 +690,14 @@ export default function Editor(): React.ReactElement {
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
+
+function IconCursor(): React.ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2.5 1.5v10l2.8-2.8 2 4 1.4-.7-2-4H10z" fill="currentColor"/>
+    </svg>
+  )
+}
 
 function IconPin(): React.ReactElement {
   return (
@@ -527,10 +731,45 @@ function Divider(): React.ReactElement {
 }
 
 function ToolBtn({ children, active, onClick, title }: { children: React.ReactNode; active: boolean; onClick: () => void; title: string }): React.ReactElement {
+  const [hovered, setHovered] = useState(false)
   return (
-    <button onClick={onClick} title={title} style={{ background: active ? '#3a3a3a' : 'transparent', color: active ? '#fff' : '#777', border: 'none', borderRadius: 6, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+    <button
+      onClick={onClick} title={title}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ background: hovered ? 'rgba(255,255,255,0.07)' : 'transparent', color: active ? '#fff' : '#666', border: 'none', borderRadius: 6, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, transition: 'background 0.1s, color 0.1s' }}
+    >
       {children}
     </button>
+  )
+}
+
+function ColorPicker({ color, colorOpen, setColor, setColorOpen }: { color: string; colorOpen: boolean; setColor: (c: string) => void; setColorOpen: (v: boolean | ((p: boolean) => boolean)) => void }): React.ReactElement {
+  const [btnHovered, setBtnHovered] = useState(false)
+  const [hoveredSwatch, setHoveredSwatch] = useState<string | null>(null)
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setColorOpen(p => !p)}
+        title="Annotation colour"
+        onMouseEnter={() => setBtnHovered(true)}
+        onMouseLeave={() => setBtnHovered(false)}
+        style={{ width: 22, height: 22, borderRadius: '50%', background: color, border: btnHovered ? '2px solid rgba(255,255,255,0.6)' : '2px solid rgba(255,255,255,0.2)', cursor: 'pointer', padding: 0, transition: 'border-color 0.1s' }}
+      />
+      {colorOpen && (
+        <div style={{ position: 'absolute', top: 30, left: '50%', transform: 'translateX(-50%)', background: '#222', border: '1px solid #444', borderRadius: 10, padding: 10, display: 'flex', gap: 8, zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
+          {COLORS.map(c => (
+            <button
+              key={c.value} title={c.label}
+              onClick={() => { setColor(c.value); setColorOpen(false) }}
+              onMouseEnter={() => setHoveredSwatch(c.value)}
+              onMouseLeave={() => setHoveredSwatch(null)}
+              style={{ width: 22, height: 22, borderRadius: '50%', background: c.value, cursor: 'pointer', border: hoveredSwatch === c.value ? '2px solid #fff' : '2px solid transparent', padding: 0, transition: 'border-color 0.1s' }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

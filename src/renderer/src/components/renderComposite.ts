@@ -113,10 +113,16 @@ export function renderComposite(
   })
 
   // Text items on image
+  const TEXT_FONT_SIZE = 16
+  const TEXT_LINE_HEIGHT = 22
+  const TEXT_MAX_W = 200
   texts.forEach(t => {
-    ctx.font = `bold 16px -apple-system, BlinkMacSystemFont, sans-serif`
+    ctx.font = `bold ${TEXT_FONT_SIZE}px -apple-system, BlinkMacSystemFont, sans-serif`
     ctx.fillStyle = t.color
-    ctx.fillText(t.text, PANEL_W + t.x, imgOffsetY + t.y)
+    const lines = wrapText(ctx, t.text, TEXT_MAX_W)
+    lines.forEach((line, i) => {
+      ctx.fillText(line, PANEL_W + t.x, imgOffsetY + t.y + TEXT_FONT_SIZE + i * TEXT_LINE_HEIGHT)
+    })
   })
 
   // Annotations on image
@@ -148,6 +154,26 @@ export function renderComposite(
   })
 
   return canvas.toDataURL('image/png')
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = []
+  for (const paragraph of text.split('\n')) {
+    if (!paragraph) { lines.push(''); continue }
+    const words = paragraph.split(' ')
+    let line = ''
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line)
+        line = word
+      } else {
+        line = test
+      }
+    }
+    if (line) lines.push(line)
+  }
+  return lines.length ? lines : ['']
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, lw: number): void {
