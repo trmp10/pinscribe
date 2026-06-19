@@ -330,6 +330,7 @@
       z-index: 500;
     }
     #text-input.active { display: block; }
+    button:focus, button:focus-visible { outline: none; }
     #arrow-input {
       width: 100%;
       background: #111;
@@ -600,6 +601,7 @@
     let activeTextPos = null
     let selectedTextId = null
     let hoveredTextId = null
+    let movingText = null
     let draft = null
     const _measureCtx = document.createElement('canvas').getContext('2d')
     let isDown = false
@@ -774,6 +776,7 @@
         selectedId = null
         selectedArrowId = null
         selectedTextId = null
+        movingText = null
         history = []
         historyIndex = -1
         panOffset = { x: 0, y: 0 }
@@ -1022,6 +1025,13 @@
     canvas.addEventListener('mousedown', e => {
       if (tool === 'text') {
         const pos = canvasPos(e)
+        const existingText = textAt(pos.x, pos.y)
+        if (existingText) {
+          selectedTextId = existingText.id
+          movingText = { id: existingText.id, startMouse: pos, startPos: { x: existingText.x, y: existingText.y }, dragged: false }
+          draw()
+          return
+        }
         activeTextPos = pos
         textInput.style.color = color
         textInput.style.fontSize = (16 * es()) + 'px'
@@ -1100,6 +1110,7 @@
         selectedTextId = textHit.id
         selectedId = null
         selectedArrowId = null
+        movingText = { id: textHit.id, startMouse: pos, startPos: { x: textHit.x, y: textHit.y }, dragged: false }
         draw()
         return
       }
@@ -1174,6 +1185,18 @@
         draw()
         return
       }
+      if (movingText) {
+        const pos = canvasPos(e)
+        const dx = pos.x - movingText.startMouse.x
+        const dy = pos.y - movingText.startMouse.y
+        if (!movingText.dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD / es()) return
+        movingText.dragged = true
+        texts = texts.map(t => t.id === movingText.id
+          ? { ...t, x: movingText.startPos.x + dx, y: movingText.startPos.y + dy }
+          : t)
+        draw()
+        return
+      }
       if (isDown) {
         const pos = canvasPos(e)
         if ((tool === 'arrow' || tool === 'double-arrow') && e.shiftKey) {
@@ -1211,7 +1234,7 @@
         if (newHoveredBox !== hoveredBoxId) { hoveredBoxId = newHoveredBox; draw() }
 
         if (tool === 'text') {
-          canvas.style.cursor = 'text'
+          canvas.style.cursor = textHover ? 'grab' : 'text'
         } else if (pinHover || arrowHover || textHover) {
           canvas.style.cursor = 'pointer'
         } else if (border) {
@@ -1231,6 +1254,11 @@
       if (resizing) {
         resizing = null
         saveSession()
+        return
+      }
+      if (movingText) {
+        if (movingText.dragged) saveSession()
+        movingText = null
         return
       }
       if (moving) {
@@ -1621,6 +1649,7 @@
       texts = []
       selectedTextId = null
       hoveredTextId = null
+      movingText = null
       zoom = 1
       seq = 1
       draft = null
