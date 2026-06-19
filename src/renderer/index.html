@@ -604,6 +604,9 @@
     let arrows = []
     let texts = []
     let activeTextPos = null
+    let activeTextW = null
+    let textDraftStart = null
+    let textDraftEnd = null
     let editingTextId = null
     let selectedTextId = null
     let hoveredTextId = null
@@ -882,22 +885,37 @@
 
       texts.forEach(t => {
         const fs = 16 * s
+        const lineH = fs * 1.3
         ctx.font = `bold ${fs}px -apple-system, sans-serif`
+        const lines = t.w ? wrapText(ctx, t.text, ctx.font, t.w * s) : [t.text]
+        const boxW = t.w ? t.w * s : ctx.measureText(t.text).width
+        const boxH = lines.length * lineH
         if (t.id === hoveredTextId || t.id === selectedTextId) {
-          const w = ctx.measureText(t.text).width
           ctx.fillStyle = 'rgba(255,255,255,0.15)'
-          ctx.fillRect(t.x * s - 2, t.y * s - fs, w + 4, fs + 4)
+          ctx.fillRect(t.x * s - 2, t.y * s - 2, boxW + 4, boxH + 4)
           if (t.id === selectedTextId) {
             ctx.strokeStyle = t.color
             ctx.lineWidth = 1
             ctx.setLineDash([3, 2])
-            ctx.strokeRect(t.x * s - 2, t.y * s - fs, w + 4, fs + 4)
+            ctx.strokeRect(t.x * s - 2, t.y * s - 2, boxW + 4, boxH + 4)
             ctx.setLineDash([])
           }
         }
         ctx.fillStyle = t.color
-        ctx.fillText(t.text, t.x * s, t.y * s)
+        lines.forEach((line, i) => ctx.fillText(line, t.x * s, t.y * s + fs + i * lineH))
       })
+
+      if (textDraftStart && textDraftEnd) {
+        const tdx = textDraftEnd.x - textDraftStart.x
+        const tdy = textDraftEnd.y - textDraftStart.y
+        if (Math.abs(tdx) > DRAG_THRESHOLD / s || Math.abs(tdy) > DRAG_THRESHOLD / s) {
+          ctx.strokeStyle = color
+          ctx.lineWidth = 1.5
+          ctx.setLineDash([5, 3])
+          ctx.strokeRect(textDraftStart.x * s, textDraftStart.y * s, tdx * s, tdy * s)
+          ctx.setLineDash([])
+        }
+      }
 
       if (draft) {
         ctx.strokeStyle = color
@@ -1030,6 +1048,7 @@
 
     canvas.addEventListener('mousedown', e => {
       if (tool === 'text') {
+        if (textInput.classList.contains('active')) { commitText(); return }
         const pos = canvasPos(e)
         const existingText = textAt(pos.x, pos.y)
         if (existingText) {
@@ -1038,14 +1057,8 @@
           draw()
           return
         }
-        activeTextPos = pos
-        textInput.style.color = color
-        textInput.style.fontSize = (16 * es()) + 'px'
-        textInput.style.left = e.clientX + 'px'
-        textInput.style.top = (e.clientY - 14) + 'px'
-        textInput.value = ''
-        textInput.classList.add('active')
-        setTimeout(() => textInput.focus(), 0)
+        textDraftStart = { x: pos.x, y: pos.y, cx: e.clientX, cy: e.clientY }
+        textDraftEnd = { x: pos.x, y: pos.y }
         return
       }
       if (spaceHeld) {
@@ -1192,6 +1205,11 @@
         draw()
         return
       }
+      if (textDraftStart) {
+        textDraftEnd = canvasPos(e)
+        draw()
+        return
+      }
       if (movingText) {
         const pos = canvasPos(e)
         const dx = pos.x - movingText.startMouse.x
@@ -1292,6 +1310,37 @@
         saveSession()
         return
       }
+      if (textDraftStart) {
+        const dx = Math.abs(textDraftEnd.x - textDraftStart.x)
+        const dy = Math.abs(textDraftEnd.y - textDraftStart.y)
+        const hasDrag = dx > DRAG_THRESHOLD / es()
+        const r = canvas.getBoundingClientRect()
+        textInput.style.color = color
+        textInput.style.fontSize = (16 * es()) + 'px'
+        if (hasDrag) {
+          const bx = Math.min(textDraftStart.x, textDraftEnd.x)
+          const by = Math.min(textDraftStart.y, textDraftEnd.y)
+          activeTextPos = { x: bx, y: by }
+          activeTextW = dx
+          textInput.style.left = (r.left + bx * es()) + 'px'
+          textInput.style.top = (r.top + by * es()) + 'px'
+          textInput.style.width = (dx * es()) + 'px'
+        } else {
+          activeTextPos = { x: textDraftStart.x, y: textDraftStart.y }
+          activeTextW = null
+          textInput.style.left = textDraftStart.cx + 'px'
+          textInput.style.top = (textDraftStart.cy - 14) + 'px'
+          textInput.style.width = ''
+        }
+        textInput.value = ''
+        textInput.classList.add('active')
+        setTimeout(() => textInput.focus(), 0)
+        textDraftStart = null
+        textDraftEnd = null
+        draw()
+        return
+      }
+
       if (!isDown) return
       isDown = false
       if (!draft) return
@@ -1302,6 +1351,15 @@
         draft = null
         const pinClick = annotationAt(sx, sy)
         if (pinClick) { draw(); openPopup(pinClick.id); return }
+        if (tool === 'box') {
+          const id = 'shape-' + Date.now()
+          const num = seq++
+          pushHistory()
+          annotations = [...annotations, { id, num, comment: '', color, point: { x: sx, y: sy } }]
+          selectedId = id
+          draw(); renderNotes(); openPopup(id); saveSession()
+          return
+        }
         draw(); return
       }
 
@@ -1489,7 +1547,8 @@
         if (editingTextId) {
           texts = texts.map(t => t.id === editingTextId ? { ...t, text: val } : t)
         } else if (activeTextPos) {
-          texts.push({ id: 'text-' + Date.now(), x: activeTextPos.x, y: activeTextPos.y, text: val, color })
+          const item = { id: 'text-' + Date.now(), x: activeTextPos.x, y: activeTextPos.y, text: val, color, w: activeTextW || undefined }
+          texts.push(item)
         }
         draw()
         saveSession()
@@ -1497,13 +1556,15 @@
       textInput.classList.remove('active')
       textInput.value = ''
       activeTextPos = null
+      activeTextW = null
+      textInput.style.width = ''
       editingTextId = null
     }
     textInput.addEventListener('blur', commitText)
     textInput.addEventListener('keydown', e => {
       e.stopPropagation()
       if (e.key === 'Enter') { e.preventDefault(); commitText() }
-      if (e.key === 'Escape') { textInput.classList.remove('active'); textInput.value = ''; activeTextPos = null; editingTextId = null }
+      if (e.key === 'Escape') { textInput.classList.remove('active'); textInput.value = ''; activeTextPos = null; activeTextW = null; textInput.style.width = ''; editingTextId = null }
     })
 
     function closeColorPicker() {
@@ -1681,6 +1742,9 @@
       hoveredTextId = null
       movingText = null
       editingTextId = null
+      textDraftStart = null
+      textDraftEnd = null
+      activeTextW = null
       zoom = 1
       seq = 1
       draft = null
@@ -2094,7 +2158,12 @@
       texts.forEach(t => {
         cx.font = 'bold 16px -apple-system, BlinkMacSystemFont, sans-serif'
         cx.fillStyle = t.color
-        cx.fillText(t.text, COMP_PANEL + t.x, imgOffY + t.y)
+        if (t.w) {
+          const lines = wrapText(cx, t.text, cx.font, t.w)
+          lines.forEach((line, i) => cx.fillText(line, COMP_PANEL + t.x, imgOffY + t.y + (i + 1) * 20.8))
+        } else {
+          cx.fillText(t.text, COMP_PANEL + t.x, imgOffY + t.y)
+        }
       })
 
       annotations.forEach(a => {
