@@ -11,7 +11,7 @@ let allowQuit = false
 
 // ─── Updater ──────────────────────────────────────────────────────────────────
 
-const YML_URL = 'https://github.com/trmp10/pinscribe/releases/latest/download/latest-mac.yml'
+const API_URL = 'https://api.github.com/repos/trmp10/pinscribe/releases/latest'
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -20,14 +20,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ])
 }
 
-async function fetchText(url: string): Promise<string> {
-  const res = await withTimeout(net.fetch(url), 15000)
+async function fetchJson(url: string): Promise<any> {
+  const res = await withTimeout(net.fetch(url, { headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'PinScribe-Updater' } }), 8000)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.text()
+  return res.json()
 }
 
 async function downloadFile(url: string, destPath: string, onProgress?: (pct: number) => void): Promise<void> {
-  const res = await withTimeout(net.fetch(url), 120000)
+  const res = await withTimeout(net.fetch(url, { headers: { 'User-Agent': 'PinScribe-Updater' } }), 120000)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const total = parseInt(res.headers.get('content-length') || '0', 10)
   let received = 0
@@ -63,10 +63,8 @@ function compareVersions(a: string, b: string): number {
 async function checkForUpdates(manual: boolean): Promise<void> {
   if (manual) { setTrayMenu('checking'); win?.webContents.send('update-checking') }
   try {
-    const yml = await fetchText(YML_URL)
-    const versionMatch = yml.match(/^version:\s*(.+)$/m)
-    if (!versionMatch) throw new Error('Could not parse version from update manifest')
-    const latest = versionMatch[1].trim()
+    const data = await fetchJson(API_URL)
+    const latest = (data.tag_name as string).replace(/^v/, '')
     if (compareVersions(latest, app.getVersion()) <= 0) {
       if (manual) {
         setTrayMenu('uptodate')
@@ -76,10 +74,9 @@ async function checkForUpdates(manual: boolean): Promise<void> {
       }
       return
     }
-    const pathMatch = yml.match(/^path:\s*(.+\.dmg)/m)
-    if (!pathMatch) throw new Error('No DMG found in update manifest')
-    const dmgName = pathMatch[1].trim()
-    const dmgUrl = `https://github.com/trmp10/pinscribe/releases/latest/download/${encodeURIComponent(dmgName)}`
+    const asset = (data.assets as any[]).find((a: any) => a.name.endsWith('-arm64.dmg'))
+    if (!asset) throw new Error('No DMG found in release assets')
+    const dmgUrl: string = asset.browser_download_url
     if (manual) {
       setTrayMenu('downloading')
       win?.webContents.send('update-available', latest)

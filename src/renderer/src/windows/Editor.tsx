@@ -23,7 +23,7 @@ const COLORS = [
 ]
 
 const UPDATE_ICONS: Record<string, React.ReactElement> = {
-  checking:    <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#2a2a2a"/><circle cx="26" cy="26" r="9" stroke="#666" strokeWidth="2"/><path d="M26 20v6l4 3" stroke="#888" strokeWidth="2" strokeLinecap="round"/></svg>,
+  checking:    <div style={{ fontSize: 40, lineHeight: 1 }}>⏳</div>,
   uptodate:    <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#30d158"/><path d="M15 27l8 8 14-16" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   downloading: <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#2a2000"/><path d="M26 16v16M18 26l8 8 8-8" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   ready:       <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect width="52" height="52" rx="13" fill="#14290a"/><path d="M26 35V21M18 29l8-8 8 8" stroke="#30d158" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
@@ -1150,8 +1150,8 @@ export default function Editor(): React.ReactElement {
 
       {/* Update modal */}
       {updateState !== 'idle' && (() => {
-        const titles: Record<string, string> = { checking: 'Checking for updates…', uptodate: 'Up to date', downloading: 'Downloading update…', ready: 'Update ready', installing: 'Installing update…', error: 'Update failed' }
-        const subs: Record<string, string> = { uptodate: `You are on the latest version${updateVersion ? ` (v${updateVersion})` : ''}.`, downloading: updatePct > 0 ? `${updatePct}%` : '', ready: updateVersion ? `v${updateVersion} is ready to install.` : 'Ready to install.', installing: 'The app will restart shortly.', error: updateError }
+        const titles: Record<string, string> = { checking: 'Checking for updates...', uptodate: 'Up to date', downloading: 'Downloading update…', ready: 'Update ready', installing: 'Installing update…', error: 'Update failed' }
+        const subs: Record<string, string> = { checking: 'Looking for a new version', uptodate: `You are on the latest version${updateVersion ? ` (v${updateVersion})` : ''}.`, downloading: updatePct > 0 ? `${updatePct}%` : '', ready: updateVersion ? `v${updateVersion} is ready to install.` : 'Ready to install.', installing: 'The app will restart shortly.', error: updateError }
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 18, padding: '28px 24px 20px', width: 268, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
