@@ -427,7 +427,12 @@
 
   <div id="titlebar">
     <div id="toolbar">
-      <button id="btn-box" class="tool-btn active" title="Annotation box">
+      <button id="btn-select" class="tool-btn" title="Select (V)">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+          <path d="M2 1L2 11.5L4.8 8.7L6.8 13.2L8.5 12.5L6.5 8L10 8Z"/>
+        </svg>
+      </button>
+      <button id="btn-box" class="tool-btn active" title="Annotation box (P)">
         <svg width="20" height="20" viewBox="0 0 20 20">
           <circle cx="10" cy="10" r="9" fill="currentColor"/>
           <text x="10" y="10" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a" font-size="10" font-weight="bold" font-family="-apple-system,sans-serif">1</text>
@@ -599,6 +604,7 @@
     let arrows = []
     let texts = []
     let activeTextPos = null
+    let editingTextId = null
     let selectedTextId = null
     let hoveredTextId = null
     let movingText = null
@@ -1118,6 +1124,7 @@
       selectedTextId = null
       selectedId = null
       selectedArrowId = null
+      if (tool === 'select') { draw(); return }
       isDown = true
       draft = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y }
       draw()
@@ -1233,7 +1240,12 @@
         const newHoveredBox = (insideBox || border) ? (insideBox || annotations.find(a => a.id === border?.id))?.id ?? null : null
         if (newHoveredBox !== hoveredBoxId) { hoveredBoxId = newHoveredBox; draw() }
 
-        if (tool === 'text') {
+        if (tool === 'select') {
+          if (textHover) canvas.style.cursor = 'grab'
+          else if (pinHover || arrowHover) canvas.style.cursor = 'pointer'
+          else if (border) canvas.style.cursor = HANDLE_CURSORS[border.handle]
+          else canvas.style.cursor = 'default'
+        } else if (tool === 'text') {
           canvas.style.cursor = textHover ? 'grab' : 'text'
         } else if (pinHover || arrowHover || textHover) {
           canvas.style.cursor = 'pointer'
@@ -1311,6 +1323,21 @@
       draw()
       renderNotes()
       saveSession()
+    })
+
+    canvas.addEventListener('dblclick', e => {
+      const pos = canvasPos(e)
+      const hit = textAt(pos.x, pos.y)
+      if (!hit) return
+      editingTextId = hit.id
+      const r = canvas.getBoundingClientRect()
+      textInput.style.color = hit.color
+      textInput.style.fontSize = (16 * es()) + 'px'
+      textInput.style.left = (r.left + hit.x * es()) + 'px'
+      textInput.style.top = (r.top + hit.y * es() - 14) + 'px'
+      textInput.value = hit.text
+      textInput.classList.add('active')
+      setTimeout(() => { textInput.focus(); textInput.select() }, 0)
     })
 
     // ─── Comment popup ────────────────────────────────────────────────────────
@@ -1438,14 +1465,18 @@
     const btnText = document.getElementById('btn-text')
     const textInput = document.getElementById('text-input')
 
+    const btnSelect = document.getElementById('btn-select')
+
     function setTool(t) {
       tool = t
+      btnSelect.classList.toggle('active', t === 'select')
       btnBox.classList.toggle('active', t === 'box')
       btnArrow.classList.toggle('active', t === 'arrow')
       btnDoubleArrow.classList.toggle('active', t === 'double-arrow')
       btnText.classList.toggle('active', t === 'text')
     }
 
+    btnSelect.addEventListener('click', () => setTool('select'))
     btnBox.addEventListener('click', () => setTool('box'))
     btnArrow.addEventListener('click', () => setTool('arrow'))
     btnDoubleArrow.addEventListener('click', () => setTool('double-arrow'))
@@ -1453,21 +1484,26 @@
 
     function commitText() {
       const val = textInput.value.trim()
-      if (val && activeTextPos) {
+      if (val) {
         pushHistory()
-        texts.push({ id: 'text-' + Date.now(), x: activeTextPos.x, y: activeTextPos.y, text: val, color })
+        if (editingTextId) {
+          texts = texts.map(t => t.id === editingTextId ? { ...t, text: val } : t)
+        } else if (activeTextPos) {
+          texts.push({ id: 'text-' + Date.now(), x: activeTextPos.x, y: activeTextPos.y, text: val, color })
+        }
         draw()
         saveSession()
       }
       textInput.classList.remove('active')
       textInput.value = ''
       activeTextPos = null
+      editingTextId = null
     }
     textInput.addEventListener('blur', commitText)
     textInput.addEventListener('keydown', e => {
       e.stopPropagation()
       if (e.key === 'Enter') { e.preventDefault(); commitText() }
-      if (e.key === 'Escape') { textInput.classList.remove('active'); textInput.value = ''; activeTextPos = null }
+      if (e.key === 'Escape') { textInput.classList.remove('active'); textInput.value = ''; activeTextPos = null; editingTextId = null }
     })
 
     function closeColorPicker() {
@@ -1621,13 +1657,7 @@
               sw.classList.toggle('selected', sw.dataset.color === color)
             )
           }
-          if (s.tool) {
-            tool = s.tool
-            btnBox.classList.toggle('active', tool === 'box')
-            btnArrow.classList.toggle('active', tool === 'arrow')
-            btnDoubleArrow.classList.toggle('active', tool === 'double-arrow')
-            btnText.classList.toggle('active', tool === 'text')
-          }
+          if (s.tool) setTool(s.tool)
           canvas.classList.add('visible')
           document.getElementById('canvas-wrapper').classList.add('visible')
           canvasEmpty.style.display = 'none'
@@ -1650,6 +1680,7 @@
       selectedTextId = null
       hoveredTextId = null
       movingText = null
+      editingTextId = null
       zoom = 1
       seq = 1
       draft = null
@@ -1731,13 +1762,7 @@
             sw.classList.toggle('selected', sw.dataset.color === color)
           )
         }
-        if (data.tool) {
-          tool = data.tool
-          btnBox.classList.toggle('active', tool === 'box')
-          btnArrow.classList.toggle('active', tool === 'arrow')
-          btnDoubleArrow.classList.toggle('active', tool === 'double-arrow')
-          btnText.classList.toggle('active', tool === 'text')
-        }
+        if (data.tool) setTool(data.tool)
         canvas.classList.add('visible')
         document.getElementById('canvas-wrapper').classList.add('visible')
         canvasEmpty.style.display = 'none'
@@ -1874,6 +1899,12 @@
             draw(); renderNotes(); saveSession()
           }
         }
+      }
+      if (!mod && !e.target.matches('textarea, input')) {
+        if (e.key === 'v') setTool('select')
+        if (e.key === 'p') setTool('box')
+        if (e.key === 'l') setTool(tool === 'arrow' ? 'double-arrow' : 'arrow')
+        if (e.key === 't') setTool('text')
       }
       if (mod && e.key === 'n') { e.preventDefault(); clearSession() }
       if (mod && e.key === 'o') { e.preventDefault(); fileInput.click() }

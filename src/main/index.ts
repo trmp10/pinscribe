@@ -148,7 +148,9 @@ function createWindow(): void {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  win.once('ready-to-show', () => win?.show())
+  win.once('ready-to-show', () => { win?.show(); app.dock?.show() })
+  win.on('show', () => app.dock?.show())
+  win.on('hide', () => app.dock?.hide())
   win.on('close', e => { if (!allowQuit) { e.preventDefault(); win?.hide() } })
   win.on('closed', () => { win = null })
 }
