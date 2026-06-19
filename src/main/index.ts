@@ -17,13 +17,14 @@ const YML_URL = 'https://github.com/trmp10/pinscribe/releases/latest/download/la
 
 function httpsGet(url: string): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
-    httpsGetRaw(url, { headers: { 'User-Agent': 'pinscribe-updater' } }, res => {
+    const req = httpsGetRaw(url, { headers: { 'User-Agent': 'pinscribe-updater' } }, res => {
       const status = res.statusCode ?? 0
       if ([301, 302, 307, 308].includes(status) && res.headers.location) {
         return httpsGet(res.headers.location).then(resolve).catch(reject)
       }
       resolve(res)
     }).on('error', reject)
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Request timed out')) })
   })
 }
 
@@ -72,7 +73,7 @@ function compareVersions(a: string, b: string): number {
 }
 
 async function checkForUpdates(manual: boolean): Promise<void> {
-  if (manual) setTrayMenu('checking')
+  if (manual) { setTrayMenu('checking'); win?.webContents.send('update-checking') }
   try {
     const yml = await fetchText(YML_URL)
     const versionMatch = yml.match(/^version:\s*(.+)$/m)
