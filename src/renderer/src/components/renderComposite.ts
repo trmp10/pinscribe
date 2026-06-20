@@ -21,6 +21,9 @@ export interface TextItem {
   y: number
   text: string
   color: string
+  width?: number
+  height?: number
+  fontSize?: number
 }
 
 const PANEL_W = 300
@@ -38,14 +41,23 @@ export function renderComposite(
 
   // Annotation sizes — fixed small pin, large readable text
   const pinR = 14
-  const strokeW = Math.max(2, Math.round(imgW * 0.002))
+  const strokeW = 2
   const pinFont = 12
 
   const noted = annotations.filter(a => a.comment.trim())
   const titleH = 44
-  const itemH = Math.max(36, pinR * 2 + 12)
-  const legendH = noted.length > 0 ? 56 : 0
-  const notesH = titleH + noted.length * itemH + legendH + PADDING * 2
+  const COMMENT_FONT = `17px -apple-system, BlinkMacSystemFont, sans-serif`
+  const TEXT_LEFT = PADDING + pinR * 2 + 8
+  const COMMENT_MAX_W = PANEL_W - PADDING - TEXT_LEFT
+  const LINE_H = 22
+  // Pre-measure wrapped lines to compute correct itemH per annotation
+  const measureCtx = document.createElement('canvas').getContext('2d')!
+  measureCtx.font = COMMENT_FONT
+  const notedWithLines = noted.map(a => {
+    const lines = wrapText(measureCtx, a.comment, COMMENT_MAX_W)
+    return { ...a, lines }
+  })
+  const notesH = titleH + notedWithLines.reduce((acc, a) => acc + Math.max(pinR * 2 + 12, a.lines.length * LINE_H + 16), 0) + PADDING * 2
   const totalH = Math.max(imgH, notesH)
   const totalW = PANEL_W + imgW
 
@@ -64,10 +76,11 @@ export function renderComposite(
   ctx.fillText('Notes', PADDING, PADDING + 18)
 
   // Notes items
-  noted.forEach((a, i) => {
-    const y = PADDING + titleH + i * itemH
+  let noteY = PADDING + titleH
+  notedWithLines.forEach(a => {
+    const itemH = Math.max(pinR * 2 + 12, a.lines.length * LINE_H + 16)
     const cx = PADDING + pinR
-    const cy = y + pinR
+    const cy = noteY + pinR + 4
 
     ctx.beginPath()
     ctx.arc(cx, cy, pinR, 0, Math.PI * 2)
@@ -83,17 +96,13 @@ export function renderComposite(
     ctx.textBaseline = 'alphabetic'
 
     ctx.fillStyle = '#222'
-    ctx.font = `17px -apple-system, BlinkMacSystemFont, sans-serif`
-    ctx.fillText(a.comment, PADDING + pinR * 2 + 8, cy + 5, PANEL_W - PADDING - pinR * 2 - 16)
-  })
+    ctx.font = COMMENT_FONT
+    a.lines.forEach((line, li) => {
+      ctx.fillText(line, TEXT_LEFT, noteY + 20 + li * LINE_H)
+    })
 
-  if (noted.length > 0) {
-    const legendY = PADDING + titleH + noted.length * itemH + 10
-    ctx.fillStyle = '#aaa'
-    ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif'
-    ctx.fillText('Numbers map to the notes above.', PADDING, legendY)
-    ctx.fillText('Outlined shapes are user-added annotations.', PADDING, legendY + 18)
-  }
+    noteY += itemH
+  })
 
   // Divider
   ctx.strokeStyle = '#e5e5e5'
@@ -110,7 +119,6 @@ export function renderComposite(
   // Arrows (visual only)
   arrows.forEach(a => {
     ctx.strokeStyle = a.color
-    ctx.lineWidth = strokeW
     drawArrow(ctx, PANEL_W + a.x1, imgOffsetY + a.y1, PANEL_W + a.x2, imgOffsetY + a.y2, strokeW, a.bidirectional)
     if (a.label) {
       const lx = PANEL_W + (a.x1 + a.x2) / 2
@@ -132,11 +140,14 @@ export function renderComposite(
   const TEXT_LINE_HEIGHT = 22
   const TEXT_MAX_W = 200
   texts.forEach(t => {
-    ctx.font = `bold ${TEXT_FONT_SIZE}px -apple-system, BlinkMacSystemFont, sans-serif`
+    const fs = t.fontSize ?? TEXT_FONT_SIZE
+    ctx.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`
     ctx.fillStyle = t.color
-    const lines = wrapText(ctx, t.text, TEXT_MAX_W)
+    const maxW = t.width ?? TEXT_MAX_W
+    const lines = wrapText(ctx, t.text, maxW)
+    const lh = fs * 1.4
     lines.forEach((line, i) => {
-      ctx.fillText(line, PANEL_W + t.x, imgOffsetY + t.y + TEXT_FONT_SIZE + i * TEXT_LINE_HEIGHT)
+      ctx.fillText(line, PANEL_W + t.x, imgOffsetY + t.y + fs + i * lh)
     })
   })
 
@@ -151,7 +162,7 @@ export function renderComposite(
       ctx.strokeRect(ox + a.box.x, oy + a.box.y, a.box.w, a.box.h)
     }
 
-    const px = a.box ? ox + a.box.x : ox + a.point!.x
+    const px = a.box ? ox + a.box.x + a.box.w : ox + a.point!.x
     const py = a.box ? oy + a.box.y : oy + a.point!.y
 
     ctx.beginPath()
@@ -186,26 +197,43 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
         line = test
       }
     }
-    if (line) lines.push(line)
+    // Break any remaining word that's still too wide (no spaces)
+    if (ctx.measureText(line).width > maxWidth) {
+      let chunk = ''
+      for (const ch of line) {
+        if (ctx.measureText(chunk + ch).width > maxWidth && chunk) { lines.push(chunk); chunk = ch }
+        else chunk += ch
+      }
+      if (chunk) lines.push(chunk)
+    } else if (line) {
+      lines.push(line)
+    }
   }
   return lines.length ? lines : ['']
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, lw: number, bidirectional?: boolean): void {
-  const headLen = Math.max(14, lw * 5)
+  const arrowLen = Math.hypot(x2 - x1, y2 - y1)
+  const headLen = Math.min(Math.max(6, lw * 5), arrowLen / 2.2)
+  const headAngle = Math.PI / 5
   const angle = Math.atan2(y2 - y1, x2 - x1)
+  ctx.lineWidth = lw
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
   ctx.beginPath()
   ctx.moveTo(x1, y1)
   ctx.lineTo(x2, y2)
-  ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6))
+  ctx.lineTo(x2 - headLen * Math.cos(angle - headAngle), y2 - headLen * Math.sin(angle - headAngle))
   ctx.moveTo(x2, y2)
-  ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6))
+  ctx.lineTo(x2 - headLen * Math.cos(angle + headAngle), y2 - headLen * Math.sin(angle + headAngle))
   if (bidirectional) {
     const ra = Math.atan2(y1 - y2, x1 - x2)
     ctx.moveTo(x1, y1)
-    ctx.lineTo(x1 - headLen * Math.cos(ra - Math.PI / 6), y1 - headLen * Math.sin(ra - Math.PI / 6))
+    ctx.lineTo(x1 - headLen * Math.cos(ra - headAngle), y1 - headLen * Math.sin(ra - headAngle))
     ctx.moveTo(x1, y1)
-    ctx.lineTo(x1 - headLen * Math.cos(ra + Math.PI / 6), y1 - headLen * Math.sin(ra + Math.PI / 6))
+    ctx.lineTo(x1 - headLen * Math.cos(ra + headAngle), y1 - headLen * Math.sin(ra + headAngle))
   }
   ctx.stroke()
+  ctx.lineCap = 'butt'
+  ctx.lineJoin = 'miter'
 }

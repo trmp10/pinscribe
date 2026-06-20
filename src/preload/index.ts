@@ -8,13 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   autoSave: (data: object): Promise<boolean> => ipcRenderer.invoke('auto-save', data),
   getAutosaves: (): Promise<object[]> => ipcRenderer.invoke('get-autosaves'),
   openAutosave: (filePath: string): Promise<object | null> => ipcRenderer.invoke('open-autosave', filePath),
-  checkForUpdates: () => ipcRenderer.send('check-for-updates'),
-  installUpdate: () => ipcRenderer.send('install-update'),
-  onUpdateAvailable: (cb: (version: string) => void) => ipcRenderer.on('update-available', (_e, version) => cb(version)),
-  onUpdateProgress: (cb: (pct: number) => void) => ipcRenderer.on('update-progress', (_e, pct) => cb(pct)),
-  onUpdateDownloaded: (cb: () => void) => ipcRenderer.on('update-downloaded', () => cb()),
-  onUpdateNotAvailable: (cb: () => void) => ipcRenderer.on('update-not-available', () => cb()),
-  onUpdateError: (cb: (msg: string) => void) => ipcRenderer.on('update-error', (_e, msg) => cb(msg)),
+  deleteAutosave: (filePath: string): Promise<boolean> => ipcRenderer.invoke('delete-autosave', filePath),
   restartForUpdate: () => ipcRenderer.send('install-update'),
   onUpdateStatus: (cb: (data: { state: string; version?: string; percent?: number }) => void) => {
     ipcRenderer.on('update-checking', () => cb({ state: 'checking' }))

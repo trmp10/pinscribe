@@ -1,12 +1,10 @@
-import { app, BrowserWindow, ipcMain, clipboard, nativeImage, Tray, Menu, globalShortcut, dialog, net } from 'electron'
+import { app, BrowserWindow, ipcMain, clipboard, nativeImage, dialog, net } from 'electron'
 import { join } from 'path'
 import { writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, createWriteStream } from 'fs'
 import { tmpdir } from 'os'
 import { execFile } from 'child_process'
 
 let win: BrowserWindow | null = null
-let tray: Tray | null = null
-let trayContextMenu: Electron.Menu | null = null
 let allowQuit = false
 
 // ─── Updater ──────────────────────────────────────────────────────────────────
@@ -61,29 +59,20 @@ function compareVersions(a: string, b: string): number {
 }
 
 async function checkForUpdates(manual: boolean): Promise<void> {
-  if (manual) { setTrayMenu('checking'); win?.webContents.send('update-checking') }
+  if (manual) win?.webContents.send('update-checking')
   try {
     const data = await fetchJson(API_URL)
     const latest = (data.tag_name as string).replace(/^v/, '')
     if (compareVersions(latest, app.getVersion()) <= 0) {
-      if (manual) {
-        setTrayMenu('uptodate')
-        win?.webContents.send('update-not-available', app.getVersion())
-      } else {
-        setTrayMenu('idle')
-      }
+      if (manual) win?.webContents.send('update-not-available', app.getVersion())
       return
     }
     const asset = (data.assets as any[]).find((a: any) => a.name.endsWith('-arm64.dmg'))
     if (!asset) throw new Error('No DMG found in release assets')
     const dmgUrl: string = asset.browser_download_url
-    if (manual) {
-      setTrayMenu('downloading')
-      win?.webContents.send('update-available', latest)
-    }
+    win?.webContents.send('update-available', latest)
     await downloadAndInstall(dmgUrl, manual)
   } catch (e) {
-    setTrayMenu('idle')
     if (manual) win?.webContents.send('update-error', (e as Error).message)
   }
 }
@@ -99,12 +88,10 @@ async function downloadAndInstall(dmgUrl: string, manual: boolean): Promise<void
     await execFileAsync('ditto', [join(mountPoint, 'PinScribe.app'), '/Applications/PinScribe.app'])
     await execFileAsync('hdiutil', ['detach', mountPoint, '-quiet']).catch(() => {})
     try { unlinkSync(tmpDmg) } catch {}
-    setTrayMenu('ready')
     win?.webContents.send('update-downloaded')
   } catch (e) {
     try { unlinkSync(tmpDmg) } catch {}
     execFile('hdiutil', ['detach', mountPoint, '-quiet'], () => {})
-    setTrayMenu('idle')
     if (manual) win?.webContents.send('update-error', (e as Error).message)
   }
 }
@@ -120,7 +107,6 @@ function createWindow(): void {
     titleBarStyle: 'hiddenInset',
     title: 'PinScribe',
     icon: join(__dirname, '../../resources/icon.icns'),
-    skipTaskbar: true,
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -134,60 +120,12 @@ function createWindow(): void {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  win.once('ready-to-show', () => { win?.show(); app.dock?.show() })
-  win.on('show', () => app.dock?.show())
-  win.on('hide', () => app.dock?.hide())
+  win.webContents.setVisualZoomLevelLimits(1, 1)
+  win.once('ready-to-show', () => { win?.show() })
   win.on('close', e => { if (!allowQuit) { e.preventDefault(); win?.hide() } })
   win.on('closed', () => { win = null })
 }
 
-function toggleWindow(): void {
-  if (!win) return
-  if (win.isVisible() && win.isFocused()) {
-    win.hide()
-  } else {
-    win.show()
-    win.focus()
-  }
-}
-
-// ─── Tray ─────────────────────────────────────────────────────────────────────
-
-function setTrayMenu(state: string): void {
-  if (!tray) return
-  const template: Electron.MenuItemConstructorOptions[] = [
-    { label: 'Open PinScribe', click: () => { win?.show(); win?.focus() } },
-    { type: 'separator' },
-  ]
-
-  if (state === 'downloading') {
-    template.push({ label: 'Downloading update…', enabled: false })
-  } else if (state === 'updating') {
-    template.push({ label: 'Installing update…', enabled: false })
-  } else if (state === 'ready') {
-    template.push({ label: 'Restart to Update', click: () => { allowQuit = true; app.relaunch(); app.exit() } })
-  } else if (state === 'uptodate') {
-    template.push({ label: `Up to date — v${app.getVersion()}`, enabled: false })
-    template.push({ label: 'Check for Updates', click: () => checkForUpdates(true) })
-  } else if (state === 'checking') {
-    template.push({ label: 'Checking for updates…', enabled: false })
-  } else {
-    template.push({ label: 'Check for Updates', click: () => checkForUpdates(true) })
-  }
-
-  template.push({ type: 'separator' }, { label: 'Quit', click: () => app.exit() })
-  trayContextMenu = Menu.buildFromTemplate(template)
-  tray.setContextMenu(null)
-}
-
-function createTray(): void {
-  const icon = nativeImage.createFromPath(join(__dirname, '../../resources/tray-icon.png'))
-  tray = new Tray(icon)
-  tray.setToolTip('PinScribe')
-  tray.on('click', toggleWindow)
-  tray.on('right-click', () => { if (trayContextMenu) tray?.popUpContextMenu(trayContextMenu) })
-  setTrayMenu('idle')
-}
 
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 
@@ -203,8 +141,6 @@ ipcMain.handle('paste-image', () => {
   return img.toDataURL()
 })
 
-ipcMain.on('check-for-updates', () => checkForUpdates(true))
-ipcMain.on('install-update', () => { allowQuit = true; app.relaunch(); app.exit() })
 
 // ─── Save PNG ─────────────────────────────────────────────────────────────────
 
@@ -275,17 +211,17 @@ ipcMain.handle('open-autosave', (_e, filePath: string) => {
   try { return JSON.parse(readFileSync(filePath, 'utf8')) } catch { return null }
 })
 
-// ─── App lifecycle ────────────────────────────────────────────────────────────
+ipcMain.handle('delete-autosave', (_e, filePath: string) => {
+  try { unlinkSync(filePath); return true } catch { return false }
+})
 
-app.dock?.hide()
+// ─── App lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
   createWindow()
-  createTray()
-  globalShortcut.register('CommandOrControl+Shift+P', toggleWindow)
   setTimeout(() => checkForUpdates(false), 3000)
 })
 
+app.on('activate', () => { win?.show(); win?.focus() })
 app.on('before-quit', () => { allowQuit = true })
-app.on('window-all-closed', () => { if (allowQuit) app.quit() })
-app.on('will-quit', () => globalShortcut.unregisterAll())
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

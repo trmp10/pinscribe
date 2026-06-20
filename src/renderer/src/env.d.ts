@@ -7,14 +7,8 @@ interface Window {
     autoSave: (data: object) => Promise<boolean>
     getAutosaves: () => Promise<object[]>
     openAutosave: (filePath: string) => Promise<object | null>
-    checkForUpdates: () => void
-    installUpdate: () => void
-    onUpdateAvailable: (cb: (version: string) => void) => void
-    onUpdateProgress: (cb: (pct: number) => void) => void
-    onUpdateDownloaded: (cb: () => void) => void
-    onUpdateNotAvailable: (cb: () => void) => void
-    onUpdateError: (cb: (msg: string) => void) => void
-    onUpdateStatus: (cb: (data: { state: string; version?: string; percent?: number }) => void) => void
+    deleteAutosave: (filePath: string) => Promise<boolean>
     restartForUpdate: () => void
+    onUpdateStatus: (cb: (data: { state: string; version?: string; percent?: number }) => void) => void
   }
 }
